@@ -22,7 +22,22 @@ fi
 # Make sure the builder is running
 docker buildx inspect --bootstrap
 
-echo "Building and pushing multi-architecture images to $REPO..."
+# Define available services
+AVAILABLE_SERVICES=("gateway" "product-catalog" "currency-service" "ad-service" "checkout-service" "load-generator")
+
+# Function to display usage information
+show_usage() {
+  echo "Usage: $0 [SERVICE_NAME]"
+  echo ""
+  echo "If SERVICE_NAME is provided, only that service will be built and pushed."
+  echo "If no SERVICE_NAME is given, all services will be built and pushed."
+  echo ""
+  echo "Available services:"
+  for service in "${AVAILABLE_SERVICES[@]}"; do
+    echo "  - $service"
+  done
+  exit 1
+}
 
 # Function to build and push a service
 build_and_push() {
@@ -52,13 +67,41 @@ build_and_push() {
   fi
 }
 
+# Check if a specific service was requested
+if [ $# -eq 1 ]; then
+  SERVICE=$1
+  # Check if service is valid
+  if [[ ! " ${AVAILABLE_SERVICES[@]} " =~ " ${SERVICE} " ]]; then
+    echo "Error: Unknown service '$SERVICE'"
+    show_usage
+  fi
+  
+  echo "Building and pushing only the $SERVICE service to $REPO..."
+  build_and_push $SERVICE
+  
+  echo "===================================="
+  echo "Service $SERVICE built and pushed successfully!"
+  echo "===================================="
+  echo "Multi-architecture image available at:"
+  echo "  $REPO:$SERVICE-$VERSION (and :$SERVICE-latest)"
+  echo ""
+  echo "Images support both amd64 and arm64 architectures."
+  
+  exit 0
+fi
+
+# If no service is specified, build all services
+if [ $# -gt 1 ]; then
+  echo "Error: Too many arguments"
+  show_usage
+fi
+
+echo "Building and pushing all services to $REPO..."
+
 # Build and push each service
-build_and_push "gateway"
-build_and_push "product-catalog"
-build_and_push "currency-service"
-build_and_push "ad-service"
-build_and_push "checkout-service"
-build_and_push "load-generator"
+for service in "${AVAILABLE_SERVICES[@]}"; do
+  build_and_push $service
+done
 
 echo "===================================="
 echo "All services built and pushed successfully!"
