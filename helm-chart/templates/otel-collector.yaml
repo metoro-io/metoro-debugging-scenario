@@ -32,7 +32,7 @@ data:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [otlphttp/metoro, logging]
+          exporters: [otlphttp/metoro]
 ---
 apiVersion: apps/v1
 kind: Deployment
