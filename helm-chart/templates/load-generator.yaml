@@ -7,8 +7,10 @@ metadata:
   labels:
     {{- include "microservice-demo.labels" . | nindent 4 }}
     app.kubernetes.io/name: {{ .Values.loadGenerator.name }}
+  annotations:
+    metoro.source.respository.base64: Z2l0aHViLmNvbS9tZXRvcm8taW8vbWV0b3JvLWRlYnVnZ2luZy1zY2VuYXJpbwo=
 spec:
-  replicas: 1
+  replicas: {{ .Values.loadGenerator.replicas }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ .Values.loadGenerator.name }}

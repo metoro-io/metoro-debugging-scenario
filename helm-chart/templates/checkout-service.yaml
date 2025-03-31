@@ -6,6 +6,8 @@ metadata:
   labels:
     {{- include "microservice-demo.labels" . | nindent 4 }}
     app.kubernetes.io/name: {{ .Values.checkoutService.name }}
+  annotations:
+    metoro.source.respository.base64: Z2l0aHViLmNvbS9tZXRvcm8taW8vbWV0b3JvLWRlYnVnZ2luZy1zY2VuYXJpbwo=
 spec:
   replicas: {{ .Values.checkoutService.replicas }}
   selector:
