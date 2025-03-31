@@ -10,17 +10,12 @@ spec:
   replicas: {{ .Values.checkoutService.replicas }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ .Values.checkoutService.name }}
-      app.kubernetes.io/part-of: microservice-demo
+      {{- include "microservice-demo.selectorLabels" .Values.checkoutService | nindent 6 }}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{ .Values.checkoutService.name }}
-        app.kubernetes.io/part-of: microservice-demo
+        {{- include "microservice-demo.selectorLabels" .Values.checkoutService | nindent 8 }}
     spec:
-      {{- with .Values.checkoutService }}
-      {{- include "microservice-demo.faultInjection" . | nindent 6 }}
-      {{- end }}
       containers:
         - name: {{ .Values.checkoutService.name }}
           image: "{{ .Values.checkoutService.image.repository }}:{{ .Values.checkoutService.image.tag }}"

@@ -10,17 +10,12 @@ spec:
   replicas: {{ .Values.productCatalog.replicas }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ .Values.productCatalog.name }}
-      app.kubernetes.io/part-of: microservice-demo
+      {{- include "microservice-demo.selectorLabels" .Values.productCatalog | nindent 6 }}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{ .Values.productCatalog.name }}
-        app.kubernetes.io/part-of: microservice-demo
+        {{- include "microservice-demo.selectorLabels" .Values.productCatalog | nindent 8 }}
     spec:
-      {{- with .Values.productCatalog }}
-      {{- include "microservice-demo.faultInjection" . | nindent 6 }}
-      {{- end }}
       containers:
         - name: {{ .Values.productCatalog.name }}
           image: "{{ .Values.productCatalog.image.repository }}:{{ .Values.productCatalog.image.tag }}"

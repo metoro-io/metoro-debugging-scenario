@@ -21,11 +21,6 @@ gateway:
     limits:
       cpu: 200m
       memory: 256Mi
-  faults:
-    enabled: false
-    latencyMs: 0
-    errorRate: 0.0
-    durationSec: 60
 
 # Product catalog service configuration
 productCatalog:
@@ -44,11 +39,6 @@ productCatalog:
     limits:
       cpu: 200m
       memory: 256Mi
-  faults:
-    enabled: false
-    latencyMs: 0
-    errorRate: 0.0
-    durationSec: 60
 
 # Currency service configuration
 currencyService:
@@ -67,11 +57,6 @@ currencyService:
     limits:
       cpu: 200m
       memory: 256Mi
-  faults:
-    enabled: false
-    latencyMs: 0
-    errorRate: 0.0
-    durationSec: 60
 
 # Ad service configuration
 adService:
@@ -90,11 +75,6 @@ adService:
     limits:
       cpu: 200m
       memory: 256Mi
-  faults:
-    enabled: false
-    latencyMs: 0
-    errorRate: 0.0
-    durationSec: 60
 
 # Checkout service configuration
 checkoutService:
@@ -113,11 +93,6 @@ checkoutService:
     limits:
       cpu: 200m
       memory: 256Mi
-  faults:
-    enabled: false
-    latencyMs: 0
-    errorRate: 0.0
-    durationSec: 60
 
 # Load generator configuration
 loadGenerator:
@@ -137,10 +112,4 @@ loadGenerator:
       memory: 128Mi
     limits:
       cpu: 200m
-      memory: 256Mi
-  # Load generator doesn't need fault injection
-  faults:
-    enabled: false
-    latencyMs: 0
-    errorRate: 0.0
-    durationSec: 60 
+      memory: 256Mi 

@@ -192,20 +192,5 @@ def checkout():
 def metrics():
     return prometheus_client.generate_latest()
 
-# Fault injection endpoint - for debugging scenarios
-@app.route('/fault', methods=['POST'])
-def inject_fault():
-    fault_config = request.get_json()
-    service = fault_config.get('service')
-    fault_type = fault_config.get('type')
-    duration = fault_config.get('duration', 60)  # seconds
-    
-    # For demonstration, we just log the fault injection
-    app.logger.info(f"Fault injection requested: {service}, {fault_type}, {duration}s")
-    
-    # In a real implementation, we would communicate with the target service
-    # to inject the requested fault
-    return jsonify({"status": "fault injection requested"})
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080) 

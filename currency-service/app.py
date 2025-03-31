@@ -63,14 +63,6 @@ EXCHANGE_RATES = {
     'CNY': 6.45,
 }
 
-# Fault configuration
-fault_config = {
-    'enabled': False,
-    'latency_ms': 0,
-    'error_rate': 0.0,
-    'expiration_time': time.time()
-}
-
 def healthz_status():
     return True
 
@@ -79,22 +71,11 @@ app.config["HEALTHZ"] = {
     "ready": healthz_status,
 }
 
-# Middleware for fault injection
 @app.before_request
 def before_request():
-    # Skip fault injection for metrics and health endpoints
-    if request.path.startswith('/metrics') or request.path.startswith('/healthz'):
-        return
-    
-    # Check if fault injection is enabled and not expired
-    if fault_config['enabled'] and time.time() < fault_config['expiration_time']:
-        # Latency injection
-        if fault_config['latency_ms'] > 0:
-            time.sleep(fault_config['latency_ms'] / 1000.0)
-        
-        # Error injection
-        if fault_config['error_rate'] > 0 and random.random() < fault_config['error_rate']:
-            return jsonify({"error": "Injected fault: currency service error"}), 500
+    request_id = request.headers.get('X-Request-ID')
+    if request_id:
+        g.request_id = request_id
 
 @app.route('/')
 def home():
@@ -182,38 +163,6 @@ def get_rates():
 @app.route('/metrics')
 def metrics():
     return prometheus_client.generate_latest()
-
-@app.route('/fault', methods=['POST'])
-def inject_fault():
-    with tracer.start_as_current_span("inject_fault") as span:
-        global fault_config
-        
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
-        
-        enabled = data.get('enabled', False)
-        latency_ms = data.get('latency_ms', 0)
-        error_rate = data.get('error_rate', 0.0)
-        duration_sec = data.get('duration_sec', 60)
-        
-        # Add attributes to span
-        span.set_attribute("fault.enabled", enabled)
-        span.set_attribute("fault.latency_ms", latency_ms)
-        span.set_attribute("fault.error_rate", error_rate)
-        span.set_attribute("fault.duration_sec", duration_sec)
-        
-        fault_config = {
-            'enabled': enabled,
-            'latency_ms': latency_ms,
-            'error_rate': error_rate,
-            'expiration_time': time.time() + duration_sec
-        }
-        
-        return jsonify({
-            "status": "Fault injection configuration updated",
-            "config": fault_config
-        })
 
 if __name__ == '__main__':
     # Start with a separate thread to serve Prometheus metrics

@@ -45,12 +45,6 @@ type Ad struct {
 
 // Global variables
 var ads []Ad
-var faultConfig struct {
-	Enabled        bool      `json:"enabled"`
-	LatencyMs      int       `json:"latency_ms"`
-	ErrorRate      float64   `json:"error_rate"`
-	ExpirationTime time.Time `json:"expiration_time"`
-}
 
 func initAds() {
 	ads = []Ad{
@@ -109,54 +103,13 @@ func init() {
 	prometheus.MustRegister(requestCount)
 	prometheus.MustRegister(responseTime)
 
-	// Initialize products
+	// Initialize ads
 	initAds()
-
-	// Initialize fault configuration
-	faultConfig.Enabled = false
-	faultConfig.LatencyMs = 0
-	faultConfig.ErrorRate = 0
-}
-
-// Middleware for handling faults
-func faultMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Skip fault injection for metrics and health endpoints
-		if c.Request.URL.Path == "/metrics" || c.Request.URL.Path == "/health" {
-			c.Next()
-			return
-		}
-
-		// Check if fault injection is enabled and not expired
-		if faultConfig.Enabled && time.Now().Before(faultConfig.ExpirationTime) {
-			// Latency injection
-			if faultConfig.LatencyMs > 0 {
-				time.Sleep(time.Duration(faultConfig.LatencyMs) * time.Millisecond)
-			}
-
-			// Error injection
-			if faultConfig.ErrorRate > 0 {
-				// Generate a random number between 0 and 1
-				if rand.Float64() < faultConfig.ErrorRate {
-					c.JSON(http.StatusInternalServerError, gin.H{
-						"error": "Injected fault: server error",
-					})
-					c.Abort()
-					return
-				}
-			}
-		}
-
-		c.Next()
-	}
 }
 
 func main() {
 	// Set up Gin
 	router := gin.Default()
-
-	// Add middleware
-	router.Use(faultMiddleware())
 
 	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {
@@ -251,31 +204,6 @@ func main() {
 
 		c.JSON(http.StatusNotFound, gin.H{"error": "Ad not found"})
 		requestCount.WithLabelValues("GET", "/ad/:id", "404").Inc()
-	})
-
-	// Fault injection endpoint
-	router.POST("/fault", func(c *gin.Context) {
-		var request struct {
-			Enabled     bool    `json:"enabled"`
-			LatencyMs   int     `json:"latency_ms"`
-			ErrorRate   float64 `json:"error_rate"`
-			DurationSec int     `json:"duration_sec"`
-		}
-
-		if err := c.BindJSON(&request); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-			return
-		}
-
-		faultConfig.Enabled = request.Enabled
-		faultConfig.LatencyMs = request.LatencyMs
-		faultConfig.ErrorRate = request.ErrorRate
-		faultConfig.ExpirationTime = time.Now().Add(time.Duration(request.DurationSec) * time.Second)
-
-		c.JSON(http.StatusOK, gin.H{
-			"status": "Fault configuration updated",
-			"config": faultConfig,
-		})
 	})
 
 	// Get server port from environment or use default
