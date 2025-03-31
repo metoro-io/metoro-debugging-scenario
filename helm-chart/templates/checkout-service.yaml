@@ -24,6 +24,7 @@ spec:
       containers:
         - name: {{ .Values.checkoutService.name }}
           image: "{{ .Values.checkoutService.image.repository }}:{{ .Values.checkoutService.image.tag }}"
+          imagePullPolicy: Always
           ports:
             - containerPort: {{ .Values.checkoutService.service.port }}
           env:

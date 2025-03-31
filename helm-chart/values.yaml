@@ -1,13 +1,15 @@
 # Global settings
 global:
   namespace: microservice-demo
+  repository: quay.io/metoro/metoro-demo-applications
+  tag: latest
   
 # Gateway service configuration
 gateway:
   name: gateway
   image:
-    repository: gateway
-    tag: latest
+    repository: quay.io/metoro/metoro-demo-applications
+    tag: gateway-latest
   replicas: 1
   service:
     type: ClusterIP
@@ -29,8 +31,8 @@ gateway:
 productCatalog:
   name: product-catalog
   image:
-    repository: product-catalog
-    tag: latest
+    repository: quay.io/metoro/metoro-demo-applications
+    tag: product-catalog-latest
   replicas: 1
   service:
     type: ClusterIP
@@ -52,8 +54,8 @@ productCatalog:
 currencyService:
   name: currency-service
   image:
-    repository: currency-service
-    tag: latest
+    repository: quay.io/metoro/metoro-demo-applications
+    tag: currency-service-latest
   replicas: 1
   service:
     type: ClusterIP
@@ -75,8 +77,8 @@ currencyService:
 adService:
   name: ad-service
   image:
-    repository: ad-service
-    tag: latest
+    repository: quay.io/metoro/metoro-demo-applications
+    tag: ad-service-latest
   replicas: 1
   service:
     type: ClusterIP
@@ -98,8 +100,8 @@ adService:
 checkoutService:
   name: checkout-service
   image:
-    repository: checkout-service
-    tag: latest
+    repository: quay.io/metoro/metoro-demo-applications
+    tag: checkout-service-latest
   replicas: 1
   service:
     type: ClusterIP
@@ -121,8 +123,8 @@ checkoutService:
 loadGenerator:
   name: load-generator
   image:
-    repository: load-generator
-    tag: latest
+    repository: quay.io/metoro/metoro-demo-applications
+    tag: load-generator-latest
   enabled: true
   delayBetweenUsers: 2.0
   metricsPort: 8099
@@ -135,4 +137,10 @@ loadGenerator:
       memory: 128Mi
     limits:
       cpu: 200m
-      memory: 256Mi 
+      memory: 256Mi
+  # Load generator doesn't need fault injection
+  faults:
+    enabled: false
+    latencyMs: 0
+    errorRate: 0.0
+    durationSec: 60 

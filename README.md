@@ -23,11 +23,22 @@ The services interact in the following manner:
 
 ## Running Locally with Docker Compose
 
-To run the entire system locally:
+### Building Images Locally
 
-```
-# Build and start all services
+To build and run all services locally:
+
+```bash
+# Build and start all services with local images
 docker-compose up --build
+```
+
+### Using Pre-built Images from Quay.io
+
+You can also use the pre-built images from Quay.io:
+
+```bash
+# Run using images from Quay.io
+docker-compose -f docker-compose-quay.yaml up
 ```
 
 The services will be available at:
@@ -46,23 +57,73 @@ The services will be available at:
 - Currency conversion: `GET /convert?from=USD&to=EUR&amount=10`
 - Advertisements: `GET /ads?product_ids=1,2,3`
 
+## Building and Pushing to Container Registry
+
+The application uses a single repository `quay.io/metoro/metoro-demo-applications` with different tags for each service, following the pattern `<service>-<version>` (e.g., `gateway-1.0.1`).
+
+### Multi-Architecture Support
+
+All images are built for both `amd64` (x86_64) and `arm64` (Apple Silicon/M1/M2) architectures, allowing them to run natively on different platforms.
+
+### Building and Pushing Images
+
+To build all service images and push them to the Quay.io registry:
+
+```bash
+# Login to Quay.io first
+docker login quay.io
+
+# Ensure Docker buildx is installed and set up
+docker buildx version
+
+# Build and push multi-architecture images for all services
+./build-and-push.sh
+```
+
+This script will:
+1. Build each service image for both amd64 and arm64 architectures
+2. Tag each image with version-specific (e.g., `gateway-1.0.1`) and latest tags (e.g., `gateway-latest`)
+3. Push all tags to the Quay.io registry
+
+The resulting images will be:
+- `quay.io/metoro/metoro-demo-applications:gateway-1.0.1`
+- `quay.io/metoro/metoro-demo-applications:product-catalog-1.0.1`
+- `quay.io/metoro/metoro-demo-applications:currency-service-1.0.1`
+- `quay.io/metoro/metoro-demo-applications:ad-service-1.0.1`
+- `quay.io/metoro/metoro-demo-applications:checkout-service-1.0.1`
+- `quay.io/metoro/metoro-demo-applications:load-generator-1.0.1`
+
+And their corresponding `-latest` versions.
+
+### Version History
+
+- **1.0.1**: Fixed Werkzeug compatibility issues in Python services by pinning werkzeug==2.0.3
+- **1.0.0**: Initial release
+
 ## Deploying with Helm
 
 A Helm chart is provided for Kubernetes deployment:
 
-```
+```bash
 # From the project root
 cd helm-chart
 
-# Install the chart
+# Install the chart (using Quay.io images by default)
 helm install microservice-demo .
+
+# Or specify a specific version
+helm install microservice-demo . --set global.tag=1.0.1
 ```
+
+### Image Pull Policy
+
+All containers in the Helm chart use `imagePullPolicy: Always` to ensure the latest images are always pulled when pods are created. This is especially important when using the "latest" tag or when rapidly iterating on development.
 
 ### Enabling Fault Injection
 
 The Helm chart supports fault injection for debugging purposes:
 
-```
+```bash
 # Enable faults for the product catalog service
 helm upgrade microservice-demo . --set productCatalog.faults.enabled=true \
   --set productCatalog.faults.latencyMs=500 \
@@ -96,6 +157,7 @@ Some interesting scenarios to debug:
 
 ### Requirements
 - Docker and Docker Compose for local development
+- Docker Buildx for multi-architecture builds
 - Kubernetes and Helm for deployment
 - Go 1.17+ and Python 3.9+ for local development
 
@@ -103,7 +165,7 @@ Some interesting scenarios to debug:
 
 To build and run individual services:
 
-```
+```bash
 # Gateway
 cd gateway
 pip install -r requirements.txt

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"math/rand"
 	"net/http"
@@ -11,6 +12,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Prometheus metrics
@@ -50,6 +60,42 @@ var faultConfig struct {
 	LatencyMs      int       `json:"latency_ms"`
 	ErrorRate      float64   `json:"error_rate"`
 	ExpirationTime time.Time `json:"expiration_time"`
+}
+
+var tracer trace.Tracer
+
+func initOTelSDK(ctx context.Context) (*sdktrace.TracerProvider, error) {
+	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if otlpEndpoint == "" {
+		otlpEndpoint = "http://otel-collector:4318/v1/traces"
+	}
+
+	exporter, err := otlptracehttp.New(ctx,
+		otlptracehttp.WithEndpoint(otlpEndpoint),
+		otlptracehttp.WithInsecure(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	resources, err := resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceNameKey.String("product-catalog"),
+			attribute.String("deployment.environment", os.Getenv("DEPLOYMENT_ENVIRONMENT")),
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tracerProvider := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(resources),
+	)
+	otel.SetTracerProvider(tracerProvider)
+	tracer = otel.Tracer("product-catalog")
+
+	return tracerProvider, nil
 }
 
 func initProducts() {
@@ -150,8 +196,24 @@ func faultMiddleware() gin.HandlerFunc {
 }
 
 func main() {
+	ctx := context.Background()
+
+	// Initialize OpenTelemetry
+	tracerProvider, err := initOTelSDK(ctx)
+	if err != nil {
+		log.Fatalf("Error initializing OpenTelemetry: %v", err)
+	}
+	defer func() {
+		if err := tracerProvider.Shutdown(ctx); err != nil {
+			log.Fatalf("Error shutting down tracer provider: %v", err)
+		}
+	}()
+
 	// Set up Gin
 	router := gin.Default()
+
+	// Add OpenTelemetry middleware
+	router.Use(otelgin.Middleware("product-catalog"))
 
 	// Add middleware
 	router.Use(faultMiddleware())
@@ -168,9 +230,16 @@ func main() {
 
 	// Get all products
 	router.GET("/products", func(c *gin.Context) {
+		_, span := tracer.Start(c.Request.Context(), "get_products")
+		defer span.End()
+
 		start := time.Now()
 
 		category := c.Query("category")
+		if category != "" {
+			span.SetAttributes(attribute.String("category", category))
+		}
+
 		var filteredProducts []Product
 
 		if category != "" {
@@ -186,6 +255,8 @@ func main() {
 			filteredProducts = products
 		}
 
+		span.SetAttributes(attribute.Int("products_count", len(filteredProducts)))
+
 		c.JSON(http.StatusOK, filteredProducts)
 
 		duration := time.Since(start).Seconds()
@@ -195,12 +266,18 @@ func main() {
 
 	// Get a specific product
 	router.GET("/product/:id", func(c *gin.Context) {
+		_, span := tracer.Start(c.Request.Context(), "get_product")
+		defer span.End()
+
 		start := time.Now()
 
 		idStr := c.Param("id")
+		span.SetAttributes(attribute.String("product_id", idStr))
+
 		id, err := strconv.Atoi(idStr)
 
 		if err != nil {
+			span.SetAttributes(attribute.String("error", "invalid_product_id"))
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid product ID"})
 			requestCount.WithLabelValues("GET", "/product/:id", "400").Inc()
 			return
@@ -208,6 +285,10 @@ func main() {
 
 		for _, p := range products {
 			if p.ID == id {
+				span.SetAttributes(
+					attribute.String("product_name", p.Name),
+					attribute.Float64("price", p.Price),
+				)
 				c.JSON(http.StatusOK, p)
 				duration := time.Since(start).Seconds()
 				requestCount.WithLabelValues("GET", "/product/:id", "200").Inc()
@@ -216,12 +297,16 @@ func main() {
 			}
 		}
 
+		span.SetAttributes(attribute.String("error", "product_not_found"))
 		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
 		requestCount.WithLabelValues("GET", "/product/:id", "404").Inc()
 	})
 
 	// Fault injection endpoint
 	router.POST("/fault", func(c *gin.Context) {
+		_, span := tracer.Start(c.Request.Context(), "inject_fault")
+		defer span.End()
+
 		var request struct {
 			Enabled     bool    `json:"enabled"`
 			LatencyMs   int     `json:"latency_ms"`
@@ -230,9 +315,17 @@ func main() {
 		}
 
 		if err := c.BindJSON(&request); err != nil {
+			span.SetAttributes(attribute.String("error", "invalid_request"))
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 			return
 		}
+
+		span.SetAttributes(
+			attribute.Bool("fault.enabled", request.Enabled),
+			attribute.Int("fault.latency_ms", request.LatencyMs),
+			attribute.Float64("fault.error_rate", request.ErrorRate),
+			attribute.Int("fault.duration_sec", request.DurationSec),
+		)
 
 		faultConfig.Enabled = request.Enabled
 		faultConfig.LatencyMs = request.LatencyMs

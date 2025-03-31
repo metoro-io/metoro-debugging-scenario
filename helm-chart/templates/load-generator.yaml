@@ -22,6 +22,7 @@ spec:
       containers:
         - name: {{ .Values.loadGenerator.name }}
           image: "{{ .Values.loadGenerator.image.repository }}:{{ .Values.loadGenerator.image.tag }}"
+          imagePullPolicy: Always
           env:
             - name: GATEWAY_SERVICE
               value: "http://{{ .Values.gateway.name }}:{{ .Values.gateway.service.port }}"

@@ -24,6 +24,7 @@ spec:
       containers:
         - name: {{ .Values.productCatalog.name }}
           image: "{{ .Values.productCatalog.image.repository }}:{{ .Values.productCatalog.image.tag }}"
+          imagePullPolicy: Always
           ports:
             - containerPort: {{ .Values.productCatalog.service.port }}
           env:

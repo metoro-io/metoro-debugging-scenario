@@ -24,6 +24,7 @@ spec:
       containers:
         - name: {{ .Values.adService.name }}
           image: "{{ .Values.adService.image.repository }}:{{ .Values.adService.image.tag }}"
+          imagePullPolicy: Always
           ports:
             - containerPort: {{ .Values.adService.service.port }}
           env:

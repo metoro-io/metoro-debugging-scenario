@@ -9,7 +9,45 @@ import prometheus_client
 from prometheus_client import Counter, Histogram
 from flask_healthz import healthz
 
+# OpenTelemetry imports
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.semconv.resource import ResourceAttributes
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
+
+# Initialize OpenTelemetry
+resource = Resource.create({
+    ResourceAttributes.SERVICE_NAME: "checkout-service",
+    ResourceAttributes.DEPLOYMENT_ENVIRONMENT: os.getenv("DEPLOYMENT_ENVIRONMENT", "production")
+})
+
+# Configure the tracer provider
+trace_provider = TracerProvider(resource=resource)
+trace.set_tracer_provider(trace_provider)
+
+# Get the OTLP endpoint from environment or use the default collector endpoint
+otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318/v1/traces")
+
+# Create an OTLP exporter and add it to the processor
+otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
+span_processor = BatchSpanProcessor(otlp_exporter)
+trace_provider.add_span_processor(span_processor)
+
+# Create the tracer
+tracer = trace.get_tracer(__name__)
+
 app = Flask(__name__)
+
+# Instrument Flask
+FlaskInstrumentor().instrument_app(app)
+
+# Instrument requests library
+RequestsInstrumentor().instrument()
+
 app.register_blueprint(healthz, url_prefix="/healthz")
 
 # Prometheus metrics
@@ -65,127 +103,150 @@ def home():
 
 @app.route('/process', methods=['POST'])
 def process_checkout():
-    start_time = time.time()
-    
-    try:
-        checkout_data = request.get_json()
-        if not checkout_data:
-            REQUEST_COUNT.labels('post', '/process', 400).inc()
-            return jsonify({"error": "No checkout data provided"}), 400
+    with tracer.start_as_current_span("process_checkout") as span:
+        start_time = time.time()
         
-        # Check if required fields are present
-        required_fields = ['user_id', 'user_currency', 'address', 'email', 'items']
-        for field in required_fields:
-            if field not in checkout_data:
+        try:
+            checkout_data = request.get_json()
+            if not checkout_data:
                 REQUEST_COUNT.labels('post', '/process', 400).inc()
-                return jsonify({"error": f"Missing required field: {field}"}), 400
-        
-        # Get product information for each item in the cart
-        items = checkout_data['items']
-        products = []
-        
-        for item in items:
-            if 'product_id' not in item or 'quantity' not in item:
-                REQUEST_COUNT.labels('post', '/process', 400).inc()
-                return jsonify({"error": "Invalid item format"}), 400
+                return jsonify({"error": "No checkout data provided"}), 400
             
-            # Get product details from product catalog service
-            try:
-                product_response = requests.get(f"{PRODUCT_CATALOG_SERVICE}/product/{item['product_id']}")
-                product_response.raise_for_status()
-                product = product_response.json()
+            # Set relevant span attributes
+            span.set_attribute("user_id", checkout_data.get('user_id', 'unknown'))
+            span.set_attribute("user_currency", checkout_data.get('user_currency', 'USD'))
+            span.set_attribute("items_count", len(checkout_data.get('items', [])))
+            
+            # Check if required fields are present
+            required_fields = ['user_id', 'user_currency', 'address', 'email', 'items']
+            for field in required_fields:
+                if field not in checkout_data:
+                    REQUEST_COUNT.labels('post', '/process', 400).inc()
+                    return jsonify({"error": f"Missing required field: {field}"}), 400
+            
+            # Get product information for each item in the cart
+            items = checkout_data['items']
+            products = []
+            
+            with tracer.start_as_current_span("fetch_product_details") as items_span:
+                items_span.set_attribute("items_count", len(items))
                 
-                # Apply currency conversion if needed
-                if checkout_data['user_currency'] != 'USD':
+                for item in items:
+                    if 'product_id' not in item or 'quantity' not in item:
+                        REQUEST_COUNT.labels('post', '/process', 400).inc()
+                        return jsonify({"error": "Invalid item format"}), 400
+                    
+                    # Get product details from product catalog service
                     try:
-                        currency_response = requests.get(
-                            f"{CURRENCY_SERVICE}/convert",
-                            params={
-                                "from": "USD",
-                                "to": checkout_data['user_currency'],
-                                "amount": product['price']
-                            }
-                        )
-                        currency_response.raise_for_status()
-                        conversion = currency_response.json()
-                        product['price'] = conversion['converted']
-                        product['currency'] = checkout_data['user_currency']
+                        with tracer.start_as_current_span(f"get_product_{item['product_id']}") as product_span:
+                            product_span.set_attribute("product_id", item['product_id'])
+                            product_span.set_attribute("quantity", item['quantity'])
+                            
+                            product_response = requests.get(f"{PRODUCT_CATALOG_SERVICE}/product/{item['product_id']}")
+                            product_response.raise_for_status()
+                            product = product_response.json()
+                            
+                            # Apply currency conversion if needed
+                            if checkout_data['user_currency'] != 'USD':
+                                try:
+                                    with tracer.start_as_current_span("convert_currency") as currency_span:
+                                        currency_span.set_attribute("from_currency", "USD")
+                                        currency_span.set_attribute("to_currency", checkout_data['user_currency'])
+                                        currency_span.set_attribute("amount", product['price'])
+                                        
+                                        currency_response = requests.get(
+                                            f"{CURRENCY_SERVICE}/convert",
+                                            params={
+                                                "from": "USD",
+                                                "to": checkout_data['user_currency'],
+                                                "amount": product['price']
+                                            }
+                                        )
+                                        currency_response.raise_for_status()
+                                        conversion = currency_response.json()
+                                        product['price'] = conversion['converted']
+                                        product['currency'] = checkout_data['user_currency']
+                                except requests.RequestException as e:
+                                    app.logger.error(f"Currency conversion error: {str(e)}")
+                                    # Continue with USD if currency service fails
+                            
+                            # Calculate total for this item
+                            item_total = product['price'] * item['quantity']
+                            
+                            # Add to products list
+                            products.append({
+                                'id': product['id'],
+                                'name': product['name'],
+                                'price': product['price'],
+                                'currency': product['currency'],
+                                'quantity': item['quantity'],
+                                'item_total': item_total
+                            })
+                            
                     except requests.RequestException as e:
-                        app.logger.error(f"Currency conversion error: {str(e)}")
-                        # Continue with USD if currency service fails
-                
-                # Calculate total for this item
-                item_total = product['price'] * item['quantity']
-                
-                # Add to products list
-                products.append({
-                    'id': product['id'],
-                    'name': product['name'],
-                    'price': product['price'],
-                    'currency': product['currency'],
-                    'quantity': item['quantity'],
-                    'item_total': item_total
-                })
-                
-            except requests.RequestException as e:
-                app.logger.error(f"Product catalog service error: {str(e)}")
-                REQUEST_COUNT.labels('post', '/process', 500).inc()
-                return jsonify({"error": f"Failed to retrieve product information: {str(e)}"}), 500
-        
-        # Calculate order total
-        order_total = sum(p['item_total'] for p in products)
-        
-        # Generate order ID
-        order_id = str(uuid.uuid4())
-        
-        # Create order
-        order = {
-            'order_id': order_id,
-            'user_id': checkout_data['user_id'],
-            'user_currency': checkout_data['user_currency'],
-            'address': checkout_data['address'],
-            'email': checkout_data['email'],
-            'products': products,
-            'total': order_total,
-            'status': 'PROCESSED',
-            'timestamp': time.time()
-        }
-        
-        # Store order (in a real app, this would be in a database)
-        orders[order_id] = order
-        
-        # Return success response
-        response = {
-            'order_id': order_id,
-            'total': order_total,
-            'currency': checkout_data['user_currency'],
-            'status': 'PROCESSED'
-        }
-        
-        duration = time.time() - start_time
-        REQUEST_COUNT.labels('post', '/process', 200).inc()
-        REQUEST_LATENCY.labels('post', '/process').observe(duration)
-        
-        return jsonify(response)
-        
-    except Exception as e:
-        app.logger.error(f"Checkout processing error: {str(e)}")
-        REQUEST_COUNT.labels('post', '/process', 500).inc()
-        return jsonify({"error": f"Checkout processing failed: {str(e)}"}), 500
+                        app.logger.error(f"Product catalog service error: {str(e)}")
+                        REQUEST_COUNT.labels('post', '/process', 500).inc()
+                        return jsonify({"error": f"Failed to retrieve product information: {str(e)}"}), 500
+            
+            # Calculate order total
+            order_total = sum(p['item_total'] for p in products)
+            span.set_attribute("order_total", order_total)
+            
+            # Generate order ID
+            order_id = str(uuid.uuid4())
+            span.set_attribute("order_id", order_id)
+            
+            # Create order
+            order = {
+                'order_id': order_id,
+                'user_id': checkout_data['user_id'],
+                'user_currency': checkout_data['user_currency'],
+                'address': checkout_data['address'],
+                'email': checkout_data['email'],
+                'products': products,
+                'total': order_total,
+                'status': 'PROCESSED',
+                'timestamp': time.time()
+            }
+            
+            # Store order (in a real app, this would be in a database)
+            orders[order_id] = order
+            
+            # Return success response
+            response = {
+                'order_id': order_id,
+                'total': order_total,
+                'currency': checkout_data['user_currency'],
+                'status': 'PROCESSED'
+            }
+            
+            duration = time.time() - start_time
+            REQUEST_COUNT.labels('post', '/process', 200).inc()
+            REQUEST_LATENCY.labels('post', '/process').observe(duration)
+            
+            return jsonify(response)
+            
+        except Exception as e:
+            app.logger.error(f"Checkout processing error: {str(e)}")
+            REQUEST_COUNT.labels('post', '/process', 500).inc()
+            return jsonify({"error": f"Checkout processing failed: {str(e)}"}), 500
 
 @app.route('/order/<order_id>', methods=['GET'])
 def get_order(order_id):
-    start_time = time.time()
-    
-    if order_id not in orders:
-        REQUEST_COUNT.labels('get', '/order/<order_id>', 404).inc()
-        return jsonify({"error": "Order not found"}), 404
-    
-    duration = time.time() - start_time
-    REQUEST_COUNT.labels('get', '/order/<order_id>', 200).inc()
-    REQUEST_LATENCY.labels('get', '/order/<order_id>').observe(duration)
-    
-    return jsonify(orders[order_id])
+    with tracer.start_as_current_span("get_order") as span:
+        span.set_attribute("order_id", order_id)
+        
+        start_time = time.time()
+        
+        if order_id not in orders:
+            REQUEST_COUNT.labels('get', '/order/<order_id>', 404).inc()
+            return jsonify({"error": "Order not found"}), 404
+        
+        duration = time.time() - start_time
+        REQUEST_COUNT.labels('get', '/order/<order_id>', 200).inc()
+        REQUEST_LATENCY.labels('get', '/order/<order_id>').observe(duration)
+        
+        return jsonify(orders[order_id])
 
 @app.route('/metrics')
 def metrics():
@@ -193,28 +254,35 @@ def metrics():
 
 @app.route('/fault', methods=['POST'])
 def inject_fault():
-    global fault_config
-    
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-    
-    enabled = data.get('enabled', False)
-    latency_ms = data.get('latency_ms', 0)
-    error_rate = data.get('error_rate', 0.0)
-    duration_sec = data.get('duration_sec', 60)
-    
-    fault_config = {
-        'enabled': enabled,
-        'latency_ms': latency_ms,
-        'error_rate': error_rate,
-        'expiration_time': time.time() + duration_sec
-    }
-    
-    return jsonify({
-        "status": "Fault injection configuration updated",
-        "config": fault_config
-    })
+    with tracer.start_as_current_span("inject_fault") as span:
+        global fault_config
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        enabled = data.get('enabled', False)
+        latency_ms = data.get('latency_ms', 0)
+        error_rate = data.get('error_rate', 0.0)
+        duration_sec = data.get('duration_sec', 60)
+        
+        # Add attributes to span
+        span.set_attribute("fault.enabled", enabled)
+        span.set_attribute("fault.latency_ms", latency_ms)
+        span.set_attribute("fault.error_rate", error_rate)
+        span.set_attribute("fault.duration_sec", duration_sec)
+        
+        fault_config = {
+            'enabled': enabled,
+            'latency_ms': latency_ms,
+            'error_rate': error_rate,
+            'expiration_time': time.time() + duration_sec
+        }
+        
+        return jsonify({
+            "status": "Fault injection configuration updated",
+            "config": fault_config
+        })
 
 if __name__ == '__main__':
     port = os.getenv('PORT', '8084')

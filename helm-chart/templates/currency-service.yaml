@@ -24,6 +24,7 @@ spec:
       containers:
         - name: {{ .Values.currencyService.name }}
           image: "{{ .Values.currencyService.image.repository }}:{{ .Values.currencyService.image.tag }}"
+          imagePullPolicy: Always
           ports:
             - containerPort: {{ .Values.currencyService.service.port }}
           env:

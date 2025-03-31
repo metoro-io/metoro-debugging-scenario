@@ -24,6 +24,7 @@ spec:
       containers:
         - name: {{ .Values.gateway.name }}
           image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}"
+          imagePullPolicy: Always
           ports:
             - containerPort: {{ .Values.gateway.service.port }}
           env:

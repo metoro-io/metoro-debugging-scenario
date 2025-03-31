@@ -19,10 +19,11 @@ app.kubernetes.io/part-of: microservice-demo
 Create the init container for fault injection
 */}}
 {{- define "microservice-demo.faultInjection" -}}
-{{- if .Values.faults.enabled }}
+{{- if .faults.enabled }}
 initContainers:
   - name: fault-injection
     image: busybox:1.34.1
-    command: ['sh', '-c', 'sleep 5 && echo "Injecting faults" && curl -X POST http://localhost:{{ .Values.service.port }}/fault -H "Content-Type: application/json" -d "{\"enabled\": true, \"latency_ms\": {{ .Values.faults.latencyMs }}, \"error_rate\": {{ .Values.faults.errorRate }}, \"duration_sec\": {{ .Values.faults.durationSec }}}"']
+    imagePullPolicy: Always
+    command: ['sh', '-c', 'sleep 5 && echo "Injecting faults" && curl -X POST http://localhost:{{ .service.port }}/fault -H "Content-Type: application/json" -d "{\"enabled\": true, \"latency_ms\": {{ .faults.latencyMs }}, \"error_rate\": {{ .faults.errorRate }}, \"duration_sec\": {{ .faults.durationSec }}}"']
 {{- end }}
 {{- end -}} 

@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  gateway:
+    image: quay.io/metoro/metoro-demo-applications:gateway-1.0.1
+    ports:
+      - "8080:8080"
+    environment:
+      - PRODUCT_CATALOG_SERVICE=http://product-catalog:8081
+      - CURRENCY_SERVICE=http://currency-service:8082
+      - AD_SERVICE=http://ad-service:8083
+      - CHECKOUT_SERVICE=http://checkout-service:8084
+    depends_on:
+      - product-catalog
+      - currency-service
+      - ad-service
+      - checkout-service
+
+  product-catalog:
+    image: quay.io/metoro/metoro-demo-applications:product-catalog-1.0.1
+    ports:
+      - "8081:8081"
+
+  currency-service:
+    image: quay.io/metoro/metoro-demo-applications:currency-service-1.0.1
+    ports:
+      - "8082:8082"
+
+  ad-service:
+    image: quay.io/metoro/metoro-demo-applications:ad-service-1.0.1
+    ports:
+      - "8083:8083"
+
+  checkout-service:
+    image: quay.io/metoro/metoro-demo-applications:checkout-service-1.0.1
+    ports:
+      - "8084:8084"
+    environment:
+      - PRODUCT_CATALOG_SERVICE=http://product-catalog:8081
+      - CURRENCY_SERVICE=http://currency-service:8082
+
+  load-generator:
+    image: quay.io/metoro/metoro-demo-applications:load-generator-1.0.1
+    environment:
+      - GATEWAY_SERVICE=http://gateway:8080
+      - DELAY_BETWEEN_USERS=2.0
+      - METRICS_PORT=8099
+    ports:
+      - "8099:8099"
+    depends_on:
+      - gateway 
