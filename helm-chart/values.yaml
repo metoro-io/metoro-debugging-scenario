@@ -1,0 +1,138 @@
+# Global settings
+global:
+  namespace: microservice-demo
+  
+# Gateway service configuration
+gateway:
+  name: gateway
+  image:
+    repository: gateway
+    tag: latest
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  faults:
+    enabled: false
+    latencyMs: 0
+    errorRate: 0.0
+    durationSec: 60
+
+# Product catalog service configuration
+productCatalog:
+  name: product-catalog
+  image:
+    repository: product-catalog
+    tag: latest
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8081
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  faults:
+    enabled: false
+    latencyMs: 0
+    errorRate: 0.0
+    durationSec: 60
+
+# Currency service configuration
+currencyService:
+  name: currency-service
+  image:
+    repository: currency-service
+    tag: latest
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8082
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  faults:
+    enabled: false
+    latencyMs: 0
+    errorRate: 0.0
+    durationSec: 60
+
+# Ad service configuration
+adService:
+  name: ad-service
+  image:
+    repository: ad-service
+    tag: latest
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8083
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  faults:
+    enabled: false
+    latencyMs: 0
+    errorRate: 0.0
+    durationSec: 60
+
+# Checkout service configuration
+checkoutService:
+  name: checkout-service
+  image:
+    repository: checkout-service
+    tag: latest
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8084
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  faults:
+    enabled: false
+    latencyMs: 0
+    errorRate: 0.0
+    durationSec: 60
+
+# Load generator configuration
+loadGenerator:
+  name: load-generator
+  image:
+    repository: load-generator
+    tag: latest
+  enabled: true
+  delayBetweenUsers: 2.0
+  metricsPort: 8099
+  service:
+    type: ClusterIP
+    port: 8099
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi 

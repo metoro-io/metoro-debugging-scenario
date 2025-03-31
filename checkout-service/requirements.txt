@@ -1,0 +1,4 @@
+flask==2.0.1
+requests==2.26.0
+prometheus-client==0.11.0
+flask-healthz==0.0.3 

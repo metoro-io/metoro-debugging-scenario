@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.adService.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "microservice-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ .Values.adService.name }}
+spec:
+  replicas: {{ .Values.adService.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Values.adService.name }}
+      app.kubernetes.io/part-of: microservice-demo
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Values.adService.name }}
+        app.kubernetes.io/part-of: microservice-demo
+    spec:
+      {{- with .Values.adService }}
+      {{- include "microservice-demo.faultInjection" . | nindent 6 }}
+      {{- end }}
+      containers:
+        - name: {{ .Values.adService.name }}
+          image: "{{ .Values.adService.image.repository }}:{{ .Values.adService.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.adService.service.port }}
+          env:
+            - name: PORT
+              value: "{{ .Values.adService.service.port }}"
+          resources:
+            {{- toYaml .Values.adService.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.adService.service.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.adService.service.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.adService.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "microservice-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ .Values.adService.name }}
+spec:
+  type: {{ .Values.adService.service.type }}
+  ports:
+    - port: {{ .Values.adService.service.port }}
+      targetPort: {{ .Values.adService.service.port }}
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ .Values.adService.name }}
+    app.kubernetes.io/part-of: microservice-demo 

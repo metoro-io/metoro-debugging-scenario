@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.env
+.venv
+.pytest_cache/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+go.sum
+*.pprof
+*/debug
+*/.debug
+
+# Helm
+.helm/
+*/charts/*.tgz
+
+# Docker
+*.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Cache
+.cache/ 

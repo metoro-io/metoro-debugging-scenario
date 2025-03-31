@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: isolate-service
+  namespace: microservice-demo
+spec:
+  podSelector:
+    matchLabels:
+      # Replace with the service to isolate, e.g. currency-service
+      app.kubernetes.io/name: currency-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    # Deny all ingress except from gateway
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: gateway
+  egress:
+  # Deny all egress (completely isolate) by not specifying any rules 
