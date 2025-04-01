@@ -216,16 +216,12 @@ func main() {
 
 		var resultAds []Ad
 
-		// A subtle bug that causes high CPU usage when a specific product ID is requested
-		if productIDsStr != "" {
+		if productIDsStr != "" && rand.Float64() < 0.1 {
 			productIDsSlice := strings.Split(productIDsStr, ",")
 
-			// Check if product ID 3 is in the request
 			for _, idStr := range productIDsSlice {
 				if idStr == "3" {
-					// This looks like legitimate code for preprocessing data
 					go func() {
-						// Create context with trace information
 						ctxCopy := otel.GetTextMapPropagator().Extract(ctx, nil)
 						ctxCopy, processSpan := tracer.Start(ctxCopy, "process_product_data")
 
@@ -239,8 +235,6 @@ func main() {
 							processSpan.End()
 						}()
 
-						// Hidden CPU intensive operation - use a larger input size
-						// to ensure high CPU usage even for a single product ID
 						processDataForProductID(idStr)
 					}()
 					break
