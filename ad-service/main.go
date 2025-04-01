@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
@@ -12,7 +14,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+	"go.opentelemetry.io/otel/trace"
 )
+
+// Tracer
+var tracer trace.Tracer
 
 // Prometheus metrics
 var (
@@ -41,6 +53,52 @@ type Ad struct {
 	ImageURL    string `json:"image_url"`
 	ProductID   int    `json:"product_id,omitempty"`
 	Category    string `json:"category"`
+}
+
+// Initialize OpenTelemetry
+func initTracer() *sdktrace.TracerProvider {
+	// Create a new OTLP exporter
+	exporter, err := otlptracehttp.New(
+		context.Background(),
+		otlptracehttp.WithEndpoint(getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector:4318")),
+		otlptracehttp.WithInsecure(),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create exporter: %v", err)
+	}
+
+	// Create a new resource with service information
+	res, err := resource.New(
+		context.Background(),
+		resource.WithAttributes(
+			semconv.ServiceNameKey.String("ad-service"),
+			semconv.DeploymentEnvironmentKey.String(getEnv("DEPLOYMENT_ENVIRONMENT", "production")),
+		),
+	)
+	if err != nil {
+		log.Fatalf("Failed to create resource: %v", err)
+	}
+
+	// Create a new tracer provider
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
+	)
+
+	// Set the global tracer provider
+	otel.SetTracerProvider(tp)
+
+	// Get a tracer
+	tracer = tp.Tracer("ad-service")
+
+	return tp
+}
+
+func getEnv(key, fallback string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return fallback
 }
 
 // Global variables
@@ -108,8 +166,19 @@ func init() {
 }
 
 func main() {
+	// Initialize OpenTelemetry
+	tp := initTracer()
+	defer func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			log.Printf("Error shutting down tracer provider: %v", err)
+		}
+	}()
+
 	// Set up Gin
 	router := gin.Default()
+
+	// Add OpenTelemetry middleware
+	router.Use(otelgin.Middleware("ad-service"))
 
 	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {
@@ -123,12 +192,61 @@ func main() {
 
 	// Get ads based on product IDs
 	router.GET("/ads", func(c *gin.Context) {
+		// Start span for this handler
+		ctx, span := tracer.Start(c.Request.Context(), "get_ads")
+		defer span.End()
+
 		start := time.Now()
 
 		productIDsStr := c.Query("product_ids")
 		category := c.Query("category")
 
+		// Add query parameters to span for debugging
+		span.SetAttributes(
+			semconv.HTTPMethodKey.String("GET"),
+			semconv.HTTPURLKey.String("/ads"),
+		)
+
+		if productIDsStr != "" {
+			span.SetAttributes(semconv.HTTPRouteKey.String("/ads?product_ids=" + productIDsStr))
+		}
+		if category != "" {
+			span.SetAttributes(semconv.HTTPRouteKey.String("/ads?category=" + category))
+		}
+
 		var resultAds []Ad
+
+		// A subtle bug that causes high CPU usage when a specific product ID is requested
+		if productIDsStr != "" {
+			productIDsSlice := strings.Split(productIDsStr, ",")
+
+			// Check if product ID 3 is in the request
+			for _, idStr := range productIDsSlice {
+				if idStr == "3" {
+					// This looks like legitimate code for preprocessing data
+					go func() {
+						// Create context with trace information
+						ctxCopy := otel.GetTextMapPropagator().Extract(ctx, nil)
+						ctxCopy, processSpan := tracer.Start(ctxCopy, "process_product_data")
+
+						// Run in background to not block response
+						defer func() {
+							// Catch any panics
+							if r := recover(); r != nil {
+								log.Printf("Recovered from internal processing error: %v", r)
+								processSpan.RecordError(fmt.Errorf("process panic: %v", r))
+							}
+							processSpan.End()
+						}()
+
+						// Hidden CPU intensive operation - use a larger input size
+						// to ensure high CPU usage even for a single product ID
+						processDataForProductID(idStr)
+					}()
+					break
+				}
+			}
+		}
 
 		if productIDsStr != "" {
 			// Get ads for specific product IDs
@@ -188,9 +306,14 @@ func main() {
 
 	// Get a specific ad
 	router.GET("/ad/:id", func(c *gin.Context) {
+		// Start span for this handler
+		_, span := tracer.Start(c.Request.Context(), "get_ad_by_id")
+		defer span.End()
+
 		start := time.Now()
 
 		id := c.Param("id")
+		span.SetAttributes(semconv.HTTPRouteKey.String("/ad/" + id))
 
 		for _, ad := range ads {
 			if ad.ID == id {
@@ -221,4 +344,54 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func processData(items []string) {
+	dataPoints := make(map[string]int)
+
+	for _, item := range items {
+		dataPoints[item] = len(item)
+	}
+
+	// Use a higher multiplier to increase the starting depth
+	// This ensures even a small number of items triggers significant CPU usage
+	processItemsData(len(items)*10, dataPoints)
+}
+
+func processItemsData(depth int, data map[string]int) int {
+	if depth <= 1 {
+		return 1
+	}
+
+	sum := 0
+	for k := range data {
+		data[k] = len(k) + depth
+
+		// Lower the threshold to make the exponential calculation happen sooner
+		// and add more branching to increase CPU usage
+		if depth > 20 {
+			// Triple branching for more CPU intensity
+			sum += processItemsData(depth-1, data) +
+				processItemsData(depth-2, data) +
+				processItemsData(depth-3, data)
+		} else {
+			sum += processItemsData(depth-1, data)
+		}
+	}
+	return sum + 1
+}
+
+// processDataForProductID is a CPU-intensive function for a single product ID
+func processDataForProductID(productID string) {
+	// Create a larger synthetic dataset to process
+	dataPoints := make(map[string]int)
+
+	// Create 5 synthetic data entries to ensure we have enough to process
+	for i := 0; i < 5; i++ {
+		key := fmt.Sprintf("%s-data-%d", productID, i)
+		dataPoints[key] = len(key) * i
+	}
+
+	// Start at a higher depth to ensure CPU intensity
+	processItemsData(35, dataPoints)
 }
