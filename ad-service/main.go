@@ -347,8 +347,6 @@ func processData(items []string) {
 		dataPoints[item] = len(item)
 	}
 
-	// Use a higher multiplier to increase the starting depth
-	// This ensures even a small number of items triggers significant CPU usage
 	processItemsData(len(items)*10, dataPoints)
 }
 
@@ -361,10 +359,7 @@ func processItemsData(depth int, data map[string]int) int {
 	for k := range data {
 		data[k] = len(k) + depth
 
-		// Lower the threshold to make the exponential calculation happen sooner
-		// and add more branching to increase CPU usage
 		if depth > 20 {
-			// Triple branching for more CPU intensity
 			sum += processItemsData(depth-1, data) +
 				processItemsData(depth-2, data) +
 				processItemsData(depth-3, data)
@@ -375,17 +370,13 @@ func processItemsData(depth int, data map[string]int) int {
 	return sum + 1
 }
 
-// processDataForProductID is a CPU-intensive function for a single product ID
 func processDataForProductID(productID string) {
-	// Create a larger synthetic dataset to process
 	dataPoints := make(map[string]int)
 
-	// Create 5 synthetic data entries to ensure we have enough to process
 	for i := 0; i < 5; i++ {
 		key := fmt.Sprintf("%s-data-%d", productID, i)
 		dataPoints[key] = len(key) * i
 	}
 
-	// Start at a higher depth to ensure CPU intensity
 	processItemsData(35, dataPoints)
 }
