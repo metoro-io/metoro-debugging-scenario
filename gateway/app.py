@@ -16,6 +16,9 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
+# Import structured logger
+from structured_logger import StructuredLogger
+
 # Initialize OpenTelemetry
 resource = Resource.create({
     ResourceAttributes.SERVICE_NAME: "gateway",
@@ -36,6 +39,9 @@ trace_provider.add_span_processor(span_processor)
 
 # Create the tracer
 tracer = trace.get_tracer(__name__)
+
+# Initialize structured logger
+logger = StructuredLogger("gateway")
 
 app = Flask(__name__)
 
@@ -66,6 +72,7 @@ app.config["HEALTHZ"] = {
 
 @app.route('/')
 def home():
+    logger.info("Handling home request", method="GET", path="/")
     return jsonify({
         "status": "success",
         "message": "Gateway Service is running"
@@ -75,6 +82,7 @@ def home():
 def get_products():
     try:
         with tracer.start_as_current_span("get_products") as span:
+            logger.info("Handling get products request", method="GET", path="/products")
             category = request.args.get('category')
             if category:
                 span.set_attribute("category", category)
@@ -120,6 +128,7 @@ def get_products():
             return jsonify(response_data)
         
     except requests.RequestException as e:
+        logger.error("Error handling get products request", error=str(e), exception_type=type(e).__name__)
         REQUEST_COUNT.labels('get', '/products', 500).inc()
         return jsonify({"error": str(e)}), 500
 
@@ -127,6 +136,7 @@ def get_products():
 def get_product(product_id):
     try:
         with tracer.start_as_current_span("get_product") as span:
+            logger.info("Handling get product request", method="GET", path=f"/product/{product_id}", product_id=product_id)
             span.set_attribute("product_id", product_id)
             
             response = requests.get(f"{PRODUCT_CATALOG_SERVICE}/product/{product_id}")
@@ -167,6 +177,7 @@ def get_product(product_id):
             return jsonify(response_data)
         
     except requests.RequestException as e:
+        logger.error("Error handling get product request", error=str(e), exception_type=type(e).__name__, product_id=product_id)
         REQUEST_COUNT.labels('get', f'/product/{product_id}', 500).inc()
         return jsonify({"error": str(e)}), 500
 
@@ -174,6 +185,7 @@ def get_product(product_id):
 def checkout():
     try:
         with tracer.start_as_current_span("checkout") as span:
+            logger.info("Handling checkout request", method="POST", path="/checkout")
             # Forward the request to the checkout service
             checkout_data = request.get_json()
             span.set_attribute("items_count", len(checkout_data.get('items', [])))
@@ -185,6 +197,7 @@ def checkout():
             return jsonify(response.json())
         
     except requests.RequestException as e:
+        logger.error("Error handling checkout request", error=str(e), exception_type=type(e).__name__)
         REQUEST_COUNT.labels('post', '/checkout', 500).inc()
         return jsonify({"error": str(e)}), 500
 
@@ -193,4 +206,5 @@ def metrics():
     return prometheus_client.generate_latest()
 
 if __name__ == '__main__':
+    logger.info("Gateway service starting", port=8080)
     app.run(host='0.0.0.0', port=8080) 

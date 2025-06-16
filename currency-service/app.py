@@ -17,6 +17,9 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
+# Import structured logger
+from structured_logger import StructuredLogger
+
 # Initialize OpenTelemetry
 resource = Resource.create({
     ResourceAttributes.SERVICE_NAME: "currency-service",
@@ -37,6 +40,9 @@ trace_provider.add_span_processor(span_processor)
 
 # Create the tracer
 tracer = trace.get_tracer(__name__)
+
+# Initialize structured logger
+logger = StructuredLogger("currency-service")
 
 app = Flask(__name__)
 
@@ -73,12 +79,14 @@ app.config["HEALTHZ"] = {
 
 @app.before_request
 def before_request():
+    from flask import g
     request_id = request.headers.get('X-Request-ID')
     if request_id:
         g.request_id = request_id
 
 @app.route('/')
 def home():
+    logger.info("Handling home request", method="GET", path="/")
     return jsonify({
         "service": "Currency Service",
         "status": "UP"
@@ -88,6 +96,7 @@ def home():
 def convert_currency():
     with tracer.start_as_current_span("convert_currency") as span:
         start_time = time.time()
+        logger.info("Converting currency", method="GET", path="/convert")
         
         from_currency = request.args.get('from', 'USD')
         to_currency = request.args.get('to', 'USD')
@@ -101,10 +110,12 @@ def convert_currency():
         
         # Validate inputs
         if from_currency not in EXCHANGE_RATES:
+            logger.warning("Unsupported currency", currency=from_currency, direction="from")
             REQUEST_COUNT.labels('get', '/convert', 400).inc()
             return jsonify({"error": f"Currency {from_currency} not supported"}), 400
         
         if to_currency not in EXCHANGE_RATES:
+            logger.warning("Unsupported currency", currency=to_currency, direction="to")
             REQUEST_COUNT.labels('get', '/convert', 400).inc()
             return jsonify({"error": f"Currency {to_currency} not supported"}), 400
         
@@ -124,12 +135,18 @@ def convert_currency():
                 
                 # Apply special rate handling for certain currencies and amounts
                 if to_currency == 'EUR' and from_currency == 'USD':
-                    fluctuation = amount_float / (amount_float - amount_float)
-                    rate = rate * fluctuation
+                    try:
+                        fluctuation = amount_float / (amount_float - amount_float)
+                        rate = rate * fluctuation
+                    except ZeroDivisionError:
+                        logger.error("Division by zero in rate calculation", from_currency=from_currency, to_currency=to_currency, amount=amount_float)
+                        REQUEST_COUNT.labels('get', '/convert', 500).inc()
+                        return jsonify({"error": "Internal calculation error"}), 500
                 
                 result["amount"] = amount_float
                 result["converted"] = round(amount_float * rate, 2)
             except ValueError:
+                logger.warning("Invalid amount provided", amount=amount)
                 REQUEST_COUNT.labels('get', '/convert', 400).inc()
                 return jsonify({"error": "Invalid amount provided"}), 400
         
@@ -143,11 +160,13 @@ def convert_currency():
 def get_rates():
     with tracer.start_as_current_span("get_rates") as span:
         start_time = time.time()
+        logger.info("Getting exchange rates", method="GET", path="/rates")
         
         base = request.args.get('base', 'USD')
         span.set_attribute("base_currency", base)
         
         if base not in EXCHANGE_RATES:
+            logger.warning("Unsupported base currency", currency=base)
             REQUEST_COUNT.labels('get', '/rates', 400).inc()
             return jsonify({"error": f"Currency {base} not supported"}), 400
         
@@ -173,4 +192,5 @@ def metrics():
 if __name__ == '__main__':
     # Start with a separate thread to serve Prometheus metrics
     port = os.getenv('PORT', '8082')
+    logger.info("Currency service starting", port=int(port))
     app.run(host='0.0.0.0', port=int(port)) 

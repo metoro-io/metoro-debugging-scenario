@@ -26,6 +26,9 @@ import (
 // Tracer
 var tracer trace.Tracer
 
+// Logger
+var logger *StructuredLogger
+
 // Prometheus metrics
 var (
 	requestCount = prometheus.NewCounterVec(
@@ -90,6 +93,9 @@ func initTracer() *sdktrace.TracerProvider {
 
 	// Get a tracer
 	tracer = tp.Tracer("ad-service")
+
+	// Initialize logger
+	logger = NewStructuredLogger("ad-service")
 
 	return tp
 }
@@ -169,8 +175,9 @@ func main() {
 	// Initialize OpenTelemetry
 	tp := initTracer()
 	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
-			log.Printf("Error shutting down tracer provider: %v", err)
+		ctx := context.Background()
+		if err := tp.Shutdown(ctx); err != nil {
+			logger.Error(ctx, "Error shutting down tracer provider", map[string]interface{}{"error": err.Error()})
 		}
 	}()
 
@@ -197,6 +204,8 @@ func main() {
 		defer span.End()
 
 		start := time.Now()
+		
+		logger.Info(ctx, "Handling get ads request", map[string]interface{}{"method": "GET", "path": "/ads"})
 
 		productIDsStr := c.Query("product_ids")
 		category := c.Query("category")
@@ -229,7 +238,7 @@ func main() {
 						defer func() {
 							// Catch any panics
 							if r := recover(); r != nil {
-								log.Printf("Recovered from internal processing error: %v", r)
+								logger.Error(ctxCopy, "Recovered from internal processing error", map[string]interface{}{"error": fmt.Sprintf("%v", r), "product_id": idStr})
 								processSpan.RecordError(fmt.Errorf("process panic: %v", r))
 							}
 							processSpan.End()
@@ -301,10 +310,12 @@ func main() {
 	// Get a specific ad
 	router.GET("/ad/:id", func(c *gin.Context) {
 		// Start span for this handler
-		_, span := tracer.Start(c.Request.Context(), "get_ad_by_id")
+		ctx, span := tracer.Start(c.Request.Context(), "get_ad_by_id")
 		defer span.End()
 
 		start := time.Now()
+		
+		logger.Info(ctx, "Handling get ad by ID request", map[string]interface{}{"method": "GET", "path": "/ad/:id", "ad_id": c.Param("id")})
 
 		id := c.Param("id")
 		span.SetAttributes(semconv.HTTPRouteKey.String("/ad/" + id))
@@ -329,7 +340,7 @@ func main() {
 		port = "8083"
 	}
 
-	log.Printf("Ad Service starting on port %s...\n", port)
+	logger.Info(context.Background(), "Ad Service starting", map[string]interface{}{"port": port})
 	router.Run(":" + port)
 }
 

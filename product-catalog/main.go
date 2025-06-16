@@ -56,6 +56,7 @@ type Product struct {
 var products []Product
 
 var tracer trace.Tracer
+var logger *StructuredLogger
 
 func initOTelSDK(ctx context.Context) (*sdktrace.TracerProvider, error) {
 	otlpEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -87,6 +88,9 @@ func initOTelSDK(ctx context.Context) (*sdktrace.TracerProvider, error) {
 	)
 	otel.SetTracerProvider(tracerProvider)
 	tracer = otel.Tracer("product-catalog")
+	
+	// Initialize logger
+	logger = NewStructuredLogger("product-catalog")
 
 	return tracerProvider, nil
 }
@@ -160,7 +164,7 @@ func main() {
 	}
 	defer func() {
 		if err := tracerProvider.Shutdown(ctx); err != nil {
-			log.Fatalf("Error shutting down tracer provider: %v", err)
+			logger.Error(ctx, "Error shutting down tracer provider", map[string]interface{}{"error": err.Error()})
 		}
 	}()
 
@@ -182,10 +186,12 @@ func main() {
 
 	// Get all products
 	router.GET("/products", func(c *gin.Context) {
-		_, span := tracer.Start(c.Request.Context(), "get_products")
+		ctx, span := tracer.Start(c.Request.Context(), "get_products")
 		defer span.End()
 
 		start := time.Now()
+		
+		logger.Info(ctx, "Handling get products request", map[string]interface{}{"method": "GET", "path": "/products"})
 
 		category := c.Query("category")
 		if category != "" {
@@ -218,10 +224,12 @@ func main() {
 
 	// Get a specific product
 	router.GET("/product/:id", func(c *gin.Context) {
-		_, span := tracer.Start(c.Request.Context(), "get_product")
+		ctx, span := tracer.Start(c.Request.Context(), "get_product")
 		defer span.End()
 
 		start := time.Now()
+		
+		logger.Info(ctx, "Handling get product by ID request", map[string]interface{}{"method": "GET", "path": "/product/:id", "product_id": c.Param("id")})
 
 		idStr := c.Param("id")
 		span.SetAttributes(attribute.String("product_id", idStr))
@@ -230,6 +238,7 @@ func main() {
 
 		if err != nil {
 			span.SetAttributes(attribute.String("error", "invalid_product_id"))
+			logger.Warn(ctx, "Invalid product ID", map[string]interface{}{"product_id": idStr, "error": err.Error()})
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid product ID"})
 			requestCount.WithLabelValues("GET", "/product/:id", "400").Inc()
 			return
@@ -250,6 +259,7 @@ func main() {
 		}
 
 		span.SetAttributes(attribute.String("error", "product_not_found"))
+		logger.Warn(ctx, "Product not found", map[string]interface{}{"product_id": id})
 		c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
 		requestCount.WithLabelValues("GET", "/product/:id", "404").Inc()
 	})
@@ -260,6 +270,6 @@ func main() {
 		port = "8081"
 	}
 
-	log.Printf("Product Catalog Service starting on port %s...\n", port)
+	logger.Info(ctx, "Product Catalog Service starting", map[string]interface{}{"port": port})
 	router.Run(":" + port)
 }

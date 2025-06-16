@@ -19,6 +19,9 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
+# Import structured logger
+from structured_logger import StructuredLogger
+
 # Initialize OpenTelemetry
 resource = Resource.create({
     ResourceAttributes.SERVICE_NAME: "checkout-service",
@@ -39,6 +42,9 @@ trace_provider.add_span_processor(span_processor)
 
 # Create the tracer
 tracer = trace.get_tracer(__name__)
+
+# Initialize structured logger
+logger = StructuredLogger("checkout-service")
 
 app = Flask(__name__)
 
@@ -71,12 +77,14 @@ app.config["HEALTHZ"] = {
 
 @app.before_request
 def before_request():
+    from flask import g
     request_id = request.headers.get('X-Request-ID')
     if request_id:
         g.request_id = request_id
 
 @app.route('/')
 def home():
+    logger.info("Handling home request", method="GET", path="/")
     return jsonify({
         "service": "Checkout Service",
         "status": "UP"
@@ -86,6 +94,7 @@ def home():
 def process_checkout():
     with tracer.start_as_current_span("process_checkout") as span:
         start_time = time.time()
+        logger.info("Processing checkout request", method="POST", path="/process")
         
         try:
             checkout_data = request.get_json()
@@ -148,7 +157,7 @@ def process_checkout():
                                         product['price'] = conversion['converted']
                                         product['currency'] = checkout_data['user_currency']
                                 except requests.RequestException as e:
-                                    app.logger.error(f"Currency conversion error: {str(e)}")
+                                    logger.error("Currency conversion error", error=str(e), product_id=item['product_id'])
                                     # Continue with USD if currency service fails
                             
                             # Calculate total for this item
@@ -165,7 +174,7 @@ def process_checkout():
                             })
                             
                     except requests.RequestException as e:
-                        app.logger.error(f"Product catalog service error: {str(e)}")
+                        logger.error("Product catalog service error", error=str(e), product_id=item['product_id'])
                         REQUEST_COUNT.labels('post', '/process', 500).inc()
                         return jsonify({"error": f"Failed to retrieve product information: {str(e)}"}), 500
             
@@ -208,7 +217,7 @@ def process_checkout():
             return jsonify(response)
             
         except Exception as e:
-            app.logger.error(f"Checkout processing error: {str(e)}")
+            logger.error("Checkout processing error", error=str(e), exception_type=type(e).__name__)
             REQUEST_COUNT.labels('post', '/process', 500).inc()
             return jsonify({"error": f"Checkout processing failed: {str(e)}"}), 500
 
@@ -218,8 +227,10 @@ def get_order(order_id):
         span.set_attribute("order_id", order_id)
         
         start_time = time.time()
+        logger.info("Getting order details", method="GET", path=f"/order/{order_id}", order_id=order_id)
         
         if order_id not in orders:
+            logger.warning("Order not found", order_id=order_id)
             REQUEST_COUNT.labels('get', '/order/<order_id>', 404).inc()
             return jsonify({"error": "Order not found"}), 404
         
@@ -235,4 +246,5 @@ def metrics():
 
 if __name__ == '__main__':
     port = os.getenv('PORT', '8084')
+    logger.info("Checkout service starting", port=int(port))
     app.run(host='0.0.0.0', port=int(port)) 
