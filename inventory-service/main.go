@@ -26,8 +26,7 @@ import (
 type InventoryStore struct {
 	mu        sync.RWMutex
 	inventory map[string]int
-	// Bug: This map is used without proper locking in some places
-	reserved map[string]int
+	reserved  map[string]int
 }
 
 var (
@@ -39,8 +38,7 @@ var (
 func init() {
 	store = &InventoryStore{
 		inventory: make(map[string]int),
-		// Bug: reserved map not initialized - will cause nil map panic
-		reserved: nil,
+		reserved:  nil,
 	}
 
 	// Initialize inventory with some stock
@@ -50,7 +48,7 @@ func init() {
 	store.inventory["GGOEAFKA087502"] = 200
 	store.inventory["GGOEAFKA087503"] = 30
 
-	// Initialize reserved map after a delay (race condition)
+	// Initialize reserved map after a delay
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		store.reserved = make(map[string]int)
@@ -132,7 +130,7 @@ func getInventory(c *gin.Context) {
 		return
 	}
 
-	// Bug: Reading reserved without lock (race condition)
+	// Reading reserved without lock
 	reserved := store.reserved[productID]
 	available := quantity - reserved
 
@@ -191,11 +189,10 @@ func reserveInventory(c *gin.Context) {
 		return
 	}
 
-	// Bug: Critical section not properly protected
 	// Reading reserved without lock
 	currentReserved := store.reserved[req.ProductID]
 
-	// Add small delay to increase chance of race condition
+	// Add small delay
 	time.Sleep(time.Duration(rand.Intn(5)) * time.Millisecond)
 
 	if currentQty-currentReserved < req.Quantity {
@@ -208,8 +205,7 @@ func reserveInventory(c *gin.Context) {
 		return
 	}
 
-	// Bug: Writing to reserved without lock (race condition)
-	// This can cause data corruption when multiple requests hit simultaneously
+	// Writing to reserved without lock
 	store.reserved[req.ProductID] = currentReserved + req.Quantity
 
 	logger.Info(ctx, "Inventory reserved successfully", map[string]interface{}{
@@ -218,8 +214,7 @@ func reserveInventory(c *gin.Context) {
 		"new_reserved_total": store.reserved[req.ProductID],
 	})
 
-	// Sometimes the race condition causes the reserved value to be corrupted
-	// Let's check if it makes sense and panic if not (causing 500 errors)
+	// Check if reserved value makes sense
 	if store.reserved[req.ProductID] > currentQty {
 		logger.Error(ctx, "CRITICAL: Reserved quantity exceeds total inventory!", map[string]interface{}{
 			"product_id":      req.ProductID,
@@ -262,7 +257,7 @@ func releaseInventory(c *gin.Context) {
 		"quantity":   req.Quantity,
 	})
 
-	// Bug: Another race condition - not locking when updating reserved
+	// Not locking when updating reserved
 	if reserved, exists := store.reserved[req.ProductID]; exists {
 		store.reserved[req.ProductID] = reserved - req.Quantity
 		if store.reserved[req.ProductID] < 0 {

@@ -1,52 +1,40 @@
 # Inventory Service
 
-A Go microservice that manages product inventory with built-in race condition bug.
+A Go microservice that manages product inventory for the e-commerce demo application.
 
-## Bug Description
+## Overview
 
-The service has a race condition in the inventory reservation logic:
+The inventory service provides REST APIs for:
+- Checking product inventory levels
+- Reserving inventory for orders
+- Releasing reserved inventory
 
-1. The `reserved` map is accessed without proper synchronization in several places:
-   - Line 126: Reading reserved without lock
-   - Line 144: Writing to reserved without lock  
-   - Line 171: Another race condition when releasing inventory
+## API Endpoints
 
-2. Under concurrent load, this causes:
-   - Data corruption where reserved quantities exceed total inventory
-   - Panic with error: "Data corruption detected: reserved (X) > total (Y)"
-   - 500 errors returned to clients
+- `GET /inventory/:product_id` - Get inventory status for a product
+- `POST /inventory/reserve` - Reserve inventory for an order
+- `POST /inventory/release` - Release previously reserved inventory
+- `GET /health` - Health check endpoint
 
-## How to Trigger
+## Features
 
-Run multiple concurrent reservation requests:
+- Structured JSON logging with trace context
+- OpenTelemetry instrumentation for distributed tracing
+- Prometheus metrics
+- Concurrent request handling
 
-```python
-# Use the included test script
+## Running Locally
+
+```bash
+go mod download
+go run .
+```
+
+The service runs on port 8085 by default (configurable via PORT environment variable).
+
+## Testing
+
+Use the included test script to simulate concurrent load:
+```bash
 python test_race_condition.py
 ```
-
-Or manually with curl:
-```bash
-# Send concurrent requests
-for i in {1..50}; do
-  curl -X POST http://localhost:8085/inventory/reserve \
-    -H "Content-Type: application/json" \
-    -d '{"product_id":"GGOEAFKA087499","quantity":10}' &
-done
-```
-
-## Log Output
-
-When the bug triggers, you'll see logs like:
-```json
-{
-  "level": "ERROR",
-  "msg": "CRITICAL: Reserved quantity exceeds total inventory!",
-  "product_id": "GGOEAFKA087499",
-  "total_inventory": 100,
-  "reserved": 115,
-  "trace_id": "abc123..."
-}
-```
-
-Followed by a panic and 500 error.
