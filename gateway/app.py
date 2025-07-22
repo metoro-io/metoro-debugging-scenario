@@ -58,6 +58,7 @@ PRODUCT_CATALOG_SERVICE = os.getenv('PRODUCT_CATALOG_SERVICE', 'http://localhost
 CURRENCY_SERVICE = os.getenv('CURRENCY_SERVICE', 'http://localhost:8082')
 AD_SERVICE = os.getenv('AD_SERVICE', 'http://localhost:8083')
 CHECKOUT_SERVICE = os.getenv('CHECKOUT_SERVICE', 'http://localhost:8084')
+INVENTORY_SERVICE = os.getenv('INVENTORY_SERVICE', 'http://localhost:8085')
 
 # Prometheus metrics
 REQUEST_COUNT = Counter('request_count', 'App Request Count', ['method', 'endpoint', 'http_status'])
@@ -113,16 +114,26 @@ def get_products():
             
             if ad_response.status_code == 200:
                 ads = ad_response.json()
-                # Add ads to the response
-                response_data = {
-                    "products": products,
-                    "ads": ads
-                }
             else:
-                response_data = {
-                    "products": products,
-                    "ads": []
-                }
+                ads = []
+            
+            # Check inventory for products
+            inventory_data = []
+            for product in products[:5]:  # Check inventory for first 5 products
+                try:
+                    inv_response = requests.get(f"{INVENTORY_SERVICE}/inventory/{product['id']}")
+                    if inv_response.status_code == 200:
+                        inventory_data.append(inv_response.json())
+                    else:
+                        logger.warning("Failed to get inventory", product_id=product['id'], status_code=inv_response.status_code)
+                except Exception as e:
+                    logger.error("Error getting inventory", product_id=product['id'], error=str(e))
+            
+            response_data = {
+                "products": products,
+                "ads": ads,
+                "inventory": inventory_data
+            }
                 
             REQUEST_COUNT.labels('get', '/products', 200).inc()
             return jsonify(response_data)
@@ -163,15 +174,25 @@ def get_product(product_id):
             
             if ad_response.status_code == 200:
                 ads = ad_response.json()
-                response_data = {
-                    "product": product,
-                    "related_ads": ads
-                }
             else:
-                response_data = {
-                    "product": product,
-                    "related_ads": []
-                }
+                ads = []
+            
+            # Get inventory for this product
+            inventory_info = None
+            try:
+                inv_response = requests.get(f"{INVENTORY_SERVICE}/inventory/{product_id}")
+                if inv_response.status_code == 200:
+                    inventory_info = inv_response.json()
+                else:
+                    logger.warning("Failed to get inventory", product_id=product_id, status_code=inv_response.status_code)
+            except Exception as e:
+                logger.error("Error getting inventory", product_id=product_id, error=str(e))
+            
+            response_data = {
+                "product": product,
+                "related_ads": ads,
+                "inventory": inventory_info
+            }
                 
             REQUEST_COUNT.labels('get', f'/product/{product_id}', 200).inc()
             return jsonify(response_data)
@@ -188,7 +209,33 @@ def checkout():
             logger.info("Handling checkout request", method="POST", path="/checkout")
             # Forward the request to the checkout service
             checkout_data = request.get_json()
-            span.set_attribute("items_count", len(checkout_data.get('items', [])))
+            items = checkout_data.get('items', [])
+            span.set_attribute("items_count", len(items))
+            
+            # Reserve inventory for each item
+            reservations = []
+            for item in items:
+                try:
+                    reserve_response = requests.post(f"{INVENTORY_SERVICE}/inventory/reserve", 
+                        json={
+                            "product_id": item['product_id'],
+                            "quantity": item['quantity']
+                        })
+                    if reserve_response.status_code == 200:
+                        reservations.append(reserve_response.json())
+                    else:
+                        logger.error("Failed to reserve inventory", 
+                            product_id=item['product_id'], 
+                            status_code=reserve_response.status_code,
+                            response=reserve_response.text)
+                        # Continue with checkout even if reservation fails
+                except Exception as e:
+                    logger.error("Error reserving inventory", 
+                        product_id=item['product_id'], 
+                        error=str(e))
+            
+            # Add reservations to checkout data
+            checkout_data['reservations'] = reservations
             
             response = requests.post(f"{CHECKOUT_SERVICE}/process", json=checkout_data)
             response.raise_for_status()

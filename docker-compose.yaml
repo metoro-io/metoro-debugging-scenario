@@ -10,11 +10,13 @@ services:
       - CURRENCY_SERVICE=http://currency-service:8082
       - AD_SERVICE=http://ad-service:8083
       - CHECKOUT_SERVICE=http://checkout-service:8084
+      - INVENTORY_SERVICE=http://inventory-service:8085
     depends_on:
       - product-catalog
       - currency-service
       - ad-service
       - checkout-service
+      - inventory-service
 
   product-catalog:
     build: ./product-catalog
@@ -38,6 +40,13 @@ services:
     environment:
       - PRODUCT_CATALOG_SERVICE=http://product-catalog:8081
       - CURRENCY_SERVICE=http://currency-service:8082
+
+  inventory-service:
+    build: ./inventory-service
+    ports:
+      - "8085:8085"
+    environment:
+      - PORT=8085
 
   load-generator:
     build: ./load-generator
