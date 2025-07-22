@@ -94,6 +94,26 @@ checkoutService:
       cpu: 200m
       memory: 256Mi
 
+# Inventory service configuration
+inventoryService:
+  name: inventory-service
+  image: quay.io/metoro/metoro-demo-applications:inventory-service-latest
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8085
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  faultInject:
+    enabled: false
+    latency: 0
+    errorRate: 0
+
 # Load generator configuration
 loadGenerator:
   name: load-generator

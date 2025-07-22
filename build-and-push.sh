@@ -23,7 +23,7 @@ fi
 docker buildx inspect --bootstrap
 
 # Define available services
-AVAILABLE_SERVICES=("gateway" "product-catalog" "currency-service" "ad-service" "checkout-service" "load-generator")
+AVAILABLE_SERVICES=("gateway" "product-catalog" "currency-service" "ad-service" "checkout-service" "inventory-service" "load-generator")
 
 # Function to display usage information
 show_usage() {
@@ -112,6 +112,7 @@ echo "  $REPO:product-catalog-$VERSION (and :product-catalog-latest)"
 echo "  $REPO:currency-service-$VERSION (and :currency-service-latest)"
 echo "  $REPO:ad-service-$VERSION (and :ad-service-latest)"
 echo "  $REPO:checkout-service-$VERSION (and :checkout-service-latest)"
+echo "  $REPO:inventory-service-$VERSION (and :inventory-service-latest)"
 echo "  $REPO:load-generator-$VERSION (and :load-generator-latest)"
 echo ""
 echo "Images support both amd64 and arm64 architectures."
@@ -124,4 +125,5 @@ echo "    --set productCatalog.image.tag=product-catalog-$VERSION \\"
 echo "    --set currencyService.image.tag=currency-service-$VERSION \\"
 echo "    --set adService.image.tag=ad-service-$VERSION \\"
 echo "    --set checkoutService.image.tag=checkout-service-$VERSION \\"
+echo "    --set inventoryService.image=quay.io/metoro/metoro-demo-applications:inventory-service-$VERSION \\"
 echo "    --set loadGenerator.image.tag=load-generator-$VERSION" 

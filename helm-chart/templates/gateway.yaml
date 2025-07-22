@@ -33,6 +33,8 @@ spec:
               value: "http://{{ .Values.adService.name }}:{{ .Values.adService.service.port }}"
             - name: CHECKOUT_SERVICE
               value: "http://{{ .Values.checkoutService.name }}:{{ .Values.checkoutService.service.port }}"
+            - name: INVENTORY_SERVICE
+              value: "http://{{ .Values.inventoryService.name }}:{{ .Values.inventoryService.service.port }}"
           resources:
             {{- toYaml .Values.gateway.resources | nindent 12 }}
           livenessProbe:
