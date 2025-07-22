@@ -20,7 +20,6 @@ The purpose of these services is to have bugs that can be debugged and to demons
 ### Key Technical Details
 - All services use OpenTelemetry for distributed tracing
 - Structured JSON logging with automatic trace context injection
-- Built-in fault injection capabilities (latency and errors)
 - Prometheus metrics exposed on each service
 - Multi-architecture Docker images (amd64/arm64)
 
@@ -76,17 +75,3 @@ helm upgrade microservice-demo ./helm-chart
 
 # Uninstall
 helm uninstall microservice-demo
-```
-
-## Debugging Features
-
-The application includes built-in debugging scenarios:
-- Fault injection via environment variables (FAULT_INJECT_LATENCY, FAULT_INJECT_ERROR_RATE)
-- Distributed tracing with trace IDs in all log messages
-- Service dependencies can be traced through HTTP headers (X-Trace-ID)
-
-## Important Files
-- `DEBUGGING_SCENARIOS.md`: Practice scenarios for debugging
-- `STRUCTURED_LOGGING.md`: Details on logging implementation
-- `docker-compose.yaml`: Local development configuration
-- `helm-chart/`: Kubernetes deployment configuration

@@ -218,20 +218,20 @@ def checkout():
                 try:
                     reserve_response = requests.post(f"{INVENTORY_SERVICE}/inventory/reserve", 
                         json={
-                            "product_id": item['product_id'],
+                            "product_id": str(item['product_id']),
                             "quantity": item['quantity']
                         })
                     if reserve_response.status_code == 200:
                         reservations.append(reserve_response.json())
                     else:
                         logger.error("Failed to reserve inventory", 
-                            product_id=item['product_id'], 
+                            product_id=str(item['product_id']), 
                             status_code=reserve_response.status_code,
                             response=reserve_response.text)
                         # Continue with checkout even if reservation fails
                 except Exception as e:
                     logger.error("Error reserving inventory", 
-                        product_id=item['product_id'], 
+                        product_id=str(item['product_id']), 
                         error=str(e))
             
             # Add reservations to checkout data

@@ -119,42 +119,6 @@ helm install microservice-demo . --set global.tag=1.0.1
 
 All containers in the Helm chart use `imagePullPolicy: Always` to ensure the latest images are always pulled when pods are created. This is especially important when using the "latest" tag or when rapidly iterating on development.
 
-### Enabling Fault Injection
-
-The Helm chart supports fault injection for debugging purposes:
-
-```bash
-# Enable faults for the product catalog service
-helm upgrade microservice-demo . --set productCatalog.faults.enabled=true \
-  --set productCatalog.faults.latencyMs=500 \
-  --set productCatalog.faults.errorRate=0.3 \
-  --set productCatalog.faults.durationSec=300
-```
-
-You can inject the following faults:
-- **Latency**: Add artificial delay to responses
-- **Errors**: Return error responses at a specified rate
-- **Both**: Combine latency and errors
-
-## Debugging Techniques
-
-This demo is designed to showcase various debugging techniques:
-
-1. **Distributed Tracing**: Trace requests across multiple services
-2. **Error Injection**: Simulate failures to test resiliency
-3. **Latency Injection**: Simulate slow services to test timeout behavior
-4. **Metrics Analysis**: Use Prometheus metrics to identify bottlenecks
-
-## Common Issues for Debugging Practice
-
-Some interesting scenarios to debug:
-1. Network latency affecting checkout service
-2. Error rate spikes in currency service
-3. Resource contention in the ad service
-4. Bad requests from the load generator
-
-## Development
-
 ### Requirements
 - Docker and Docker Compose for local development
 - Docker Buildx for multi-architecture builds
