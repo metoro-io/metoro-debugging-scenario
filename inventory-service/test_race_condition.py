@@ -11,7 +11,7 @@ import time
 import random
 
 INVENTORY_SERVICE = "http://localhost:8085"
-PRODUCT_ID = "GGOEAFKA087499"  # Product with initial quantity of 100
+PRODUCT_ID = "1"  # Product with initial quantity of 100
 
 def reserve_inventory(request_num):
     """Make a reservation request"""

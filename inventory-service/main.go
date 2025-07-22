@@ -42,11 +42,14 @@ func init() {
 	}
 
 	// Initialize inventory with some stock
-	store.inventory["GGOEAFKA087499"] = 100
-	store.inventory["GGOEAFKA087500"] = 50
-	store.inventory["GGOEAFKA087501"] = 75
-	store.inventory["GGOEAFKA087502"] = 200
-	store.inventory["GGOEAFKA087503"] = 30
+	store.inventory["1"] = 100
+	store.inventory["2"] = 50
+	store.inventory["3"] = 75
+	store.inventory["4"] = 200
+	store.inventory["5"] = 30
+	store.inventory["6"] = 150
+	store.inventory["7"] = 80
+	store.inventory["8"] = 120
 
 	// Initialize reserved map after a delay
 	go func() {

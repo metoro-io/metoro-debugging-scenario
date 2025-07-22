@@ -121,7 +121,7 @@ def get_products():
             inventory_data = []
             for product in products[:5]:  # Check inventory for first 5 products
                 try:
-                    inv_response = requests.get(f"{INVENTORY_SERVICE}/inventory/{product['id']}")
+                    inv_response = requests.get(f"{INVENTORY_SERVICE}/inventory/{str(product['id'])}")
                     if inv_response.status_code == 200:
                         inventory_data.append(inv_response.json())
                     else:
