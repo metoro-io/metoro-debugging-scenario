@@ -15,7 +15,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: inventory-service
-  namespace: {{ .Values.namespace }}
+  namespace: {{ .Values.global.namespace }}
 spec:
   replicas: {{ .Values.inventoryService.replicas }}
   selector:
