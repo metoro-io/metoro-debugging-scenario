@@ -21,6 +21,7 @@ build_service "currency-service"
 build_service "ad-service"
 build_service "checkout-service"
 build_service "load-generator"
+build_service "inventory-service"
 
 echo "All services built successfully!"
 echo "To run the services, use: docker-compose up" 
