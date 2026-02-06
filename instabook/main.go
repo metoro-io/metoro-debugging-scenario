@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"time"
@@ -14,23 +13,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
-	"go.opentelemetry.io/otel/trace"
 )
-
-// Tracer
-var tracer trace.Tracer
 
 // Logger
 var logger *StructuredLogger
 
-// HTTP client with tracing
+// HTTP client
 var httpClient *http.Client
 
 // Configuration
@@ -75,46 +63,6 @@ var (
 	)
 )
 
-// Initialize OpenTelemetry
-func initTracer() *sdktrace.TracerProvider {
-	exporter, err := otlptracehttp.New(
-		context.Background(),
-		otlptracehttp.WithEndpoint(getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector:4318")),
-		otlptracehttp.WithInsecure(),
-	)
-	if err != nil {
-		log.Fatalf("Failed to create exporter: %v", err)
-	}
-
-	res, err := resource.New(
-		context.Background(),
-		resource.WithAttributes(
-			semconv.ServiceNameKey.String("instabook"),
-			semconv.DeploymentEnvironmentKey.String(getEnv("DEPLOYMENT_ENVIRONMENT", "production")),
-		),
-	)
-	if err != nil {
-		log.Fatalf("Failed to create resource: %v", err)
-	}
-
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
-		sdktrace.WithResource(res),
-	)
-
-	otel.SetTracerProvider(tp)
-	tracer = tp.Tracer("instabook")
-	logger = NewStructuredLogger("instabook")
-
-	// Create HTTP client with tracing
-	httpClient = &http.Client{
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
-		Timeout:   10 * time.Second,
-	}
-
-	return tp
-}
-
 func getEnv(key, fallback string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
@@ -129,6 +77,11 @@ func init() {
 
 	cacheServiceURL = getEnv("INSTABOOK_CACHE_SERVICE", "http://localhost:8086")
 	apiToken = getEnv("INSTABOOK_API_TOKEN", "instabook-secret-token-2024")
+	logger = NewStructuredLogger("instabook")
+
+	httpClient = &http.Client{
+		Timeout: 10 * time.Second,
+	}
 }
 
 // callCache makes a request to the cache service with proper auth
@@ -157,16 +110,7 @@ func callCache(ctx context.Context, method, path string, body interface{}) (*htt
 }
 
 func main() {
-	tp := initTracer()
-	defer func() {
-		ctx := context.Background()
-		if err := tp.Shutdown(ctx); err != nil {
-			logger.Error(ctx, "Error shutting down tracer provider", map[string]interface{}{"error": err.Error()})
-		}
-	}()
-
 	router := gin.Default()
-	router.Use(otelgin.Middleware("instabook"))
 
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
@@ -178,9 +122,7 @@ func main() {
 
 	// Get booking session
 	router.GET("/booking/session/:id", func(c *gin.Context) {
-		ctx, span := tracer.Start(c.Request.Context(), "get_booking_session")
-		defer span.End()
-
+		ctx := c.Request.Context()
 		start := time.Now()
 		id := c.Param("id")
 
@@ -256,9 +198,7 @@ func main() {
 
 	// Create booking session
 	router.POST("/booking/session", func(c *gin.Context) {
-		ctx, span := tracer.Start(c.Request.Context(), "create_booking_session")
-		defer span.End()
-
+		ctx := c.Request.Context()
 		start := time.Now()
 
 		var session Session

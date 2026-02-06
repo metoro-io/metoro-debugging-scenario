@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -12,17 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
-	"go.opentelemetry.io/otel/trace"
 )
-
-// Tracer
-var tracer trace.Tracer
 
 // Logger
 var logger *StructuredLogger
@@ -69,40 +58,6 @@ var (
 	)
 )
 
-// Initialize OpenTelemetry
-func initTracer() *sdktrace.TracerProvider {
-	exporter, err := otlptracehttp.New(
-		context.Background(),
-		otlptracehttp.WithEndpoint(getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector:4318")),
-		otlptracehttp.WithInsecure(),
-	)
-	if err != nil {
-		log.Fatalf("Failed to create exporter: %v", err)
-	}
-
-	res, err := resource.New(
-		context.Background(),
-		resource.WithAttributes(
-			semconv.ServiceNameKey.String("instabook-cache"),
-			semconv.DeploymentEnvironmentKey.String(getEnv("DEPLOYMENT_ENVIRONMENT", "production")),
-		),
-	)
-	if err != nil {
-		log.Fatalf("Failed to create resource: %v", err)
-	}
-
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
-		sdktrace.WithResource(res),
-	)
-
-	otel.SetTracerProvider(tp)
-	tracer = tp.Tracer("instabook-cache")
-	logger = NewStructuredLogger("instabook-cache")
-
-	return tp
-}
-
 func getEnv(key, fallback string) string {
 	if value, exists := os.LookupEnv(key); exists {
 		return value
@@ -114,6 +69,7 @@ func init() {
 	prometheus.MustRegister(requestCount)
 	prometheus.MustRegister(responseTime)
 	apiToken = getEnv("INSTABOOK_API_TOKEN", "instabook-secret-token-2024")
+	logger = NewStructuredLogger("instabook-cache")
 }
 
 // Admin HTML page
@@ -225,14 +181,12 @@ const adminHTML = `<!DOCTYPE html>
 // Authorization middleware for cache endpoints
 func authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
-
 		tokenMutex.RLock()
 		enabled := tokenEnabled
 		tokenMutex.RUnlock()
 
 		if !enabled {
-			logger.Warn(ctx, "Token authentication is disabled, rejecting request", map[string]interface{}{
+			logger.Warn(context.Background(), "Token authentication is disabled, rejecting request", map[string]interface{}{
 				"path":   c.Request.URL.Path,
 				"method": c.Request.Method,
 			})
@@ -243,7 +197,7 @@ func authMiddleware() gin.HandlerFunc {
 
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			logger.Warn(ctx, "Missing Authorization header", map[string]interface{}{
+			logger.Warn(context.Background(), "Missing Authorization header", map[string]interface{}{
 				"path":   c.Request.URL.Path,
 				"method": c.Request.Method,
 			})
@@ -254,7 +208,7 @@ func authMiddleware() gin.HandlerFunc {
 
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			logger.Warn(ctx, "Invalid Authorization header format", map[string]interface{}{
+			logger.Warn(context.Background(), "Invalid Authorization header format", map[string]interface{}{
 				"path":   c.Request.URL.Path,
 				"method": c.Request.Method,
 			})
@@ -264,7 +218,7 @@ func authMiddleware() gin.HandlerFunc {
 		}
 
 		if parts[1] != apiToken {
-			logger.Warn(ctx, "Invalid API token", map[string]interface{}{
+			logger.Warn(context.Background(), "Invalid API token", map[string]interface{}{
 				"path":   c.Request.URL.Path,
 				"method": c.Request.Method,
 			})
@@ -278,16 +232,7 @@ func authMiddleware() gin.HandlerFunc {
 }
 
 func main() {
-	tp := initTracer()
-	defer func() {
-		ctx := context.Background()
-		if err := tp.Shutdown(ctx); err != nil {
-			logger.Error(ctx, "Error shutting down tracer provider", map[string]interface{}{"error": err.Error()})
-		}
-	}()
-
 	router := gin.Default()
-	router.Use(otelgin.Middleware("instabook-cache"))
 
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
@@ -313,13 +258,12 @@ func main() {
 
 	// Token toggle endpoint
 	router.POST("/admin/token", func(c *gin.Context) {
-		ctx := c.Request.Context()
 		tokenMutex.Lock()
 		tokenEnabled = !tokenEnabled
 		newState := tokenEnabled
 		tokenMutex.Unlock()
 
-		logger.Info(ctx, "Token authentication toggled", map[string]interface{}{
+		logger.Info(context.Background(), "Token authentication toggled", map[string]interface{}{
 			"enabled": newState,
 		})
 
@@ -332,13 +276,10 @@ func main() {
 	{
 		// Get session
 		cache.GET("/session/:id", func(c *gin.Context) {
-			ctx, span := tracer.Start(c.Request.Context(), "get_session")
-			defer span.End()
-
 			start := time.Now()
 			id := c.Param("id")
 
-			logger.Info(ctx, "Getting session from cache", map[string]interface{}{
+			logger.Info(context.Background(), "Getting session from cache", map[string]interface{}{
 				"session_id": id,
 			})
 
@@ -361,14 +302,11 @@ func main() {
 
 		// Create session
 		cache.POST("/session", func(c *gin.Context) {
-			ctx, span := tracer.Start(c.Request.Context(), "create_session")
-			defer span.End()
-
 			start := time.Now()
 
 			var session Session
 			if err := c.ShouldBindJSON(&session); err != nil {
-				logger.Error(ctx, "Failed to parse session data", map[string]interface{}{
+				logger.Error(context.Background(), "Failed to parse session data", map[string]interface{}{
 					"error": err.Error(),
 				})
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid session data"})
@@ -378,7 +316,7 @@ func main() {
 
 			session.CreatedAt = time.Now()
 
-			logger.Info(ctx, "Creating session in cache", map[string]interface{}{
+			logger.Info(context.Background(), "Creating session in cache", map[string]interface{}{
 				"session_id": session.ID,
 				"user_id":    session.UserID,
 			})
