@@ -12,6 +12,9 @@ The system consists of the following services:
 - **Ad Service (Go)**: Provides advertisements
 - **Checkout Service (Python)**: Processes orders
 - **Load Generator (Python)**: Simulates user traffic
+- **Instabook Cache (Go)**: Session cache with admin UI for token toggle
+- **Instabook (Go)**: Booking service that calls the cache with Bearer token authentication
+- **Load Generator Instabook (Python)**: Simulates booking traffic
 
 ## Architecture
 
@@ -47,7 +50,11 @@ The services will be available at:
 - Currency Service: http://localhost:8082
 - Ad Service: http://localhost:8083
 - Checkout Service: http://localhost:8084
+- Instabook Cache: http://localhost:8086
+- Instabook Cache Admin UI: http://localhost:8086/admin
+- Instabook: http://localhost:8087
 - Load Generator Metrics: http://localhost:8099/metrics
+- Load Generator Instabook Metrics: http://localhost:8098/metrics
 
 ### API Endpoints
 
@@ -56,6 +63,27 @@ The services will be available at:
 - Checkout: `POST /checkout`
 - Currency conversion: `GET /convert?from=USD&to=EUR&amount=10`
 - Advertisements: `GET /ads?product_ids=1,2,3`
+
+## Instabook Debugging Scenario
+
+The instabook services form a chain for demonstrating authentication failure debugging:
+
+```
+load-generator-instabook → instabook (8087) → instabook-cache (8086)
+```
+
+### How it works
+
+1. **Normal flow**: The load generator creates and reads booking sessions through the instabook service, which calls the cache with a Bearer token.
+
+2. **Token toggle**: Visit http://localhost:8086/admin to toggle API token authentication on/off.
+
+3. **Failure scenario**: When token authentication is disabled:
+   - instabook-cache returns 401 for all `/cache/*` requests
+   - instabook receives the 401 and returns 500 with "Internal service authentication failure"
+   - load-generator-instabook logs errors for the 500 responses
+
+This scenario demonstrates debugging distributed authentication failures across service boundaries.
 
 ## Building and Pushing to Container Registry
 
@@ -92,6 +120,9 @@ The resulting images will be:
 - `quay.io/metoro/metoro-demo-applications:ad-service-1.0.1`
 - `quay.io/metoro/metoro-demo-applications:checkout-service-1.0.1`
 - `quay.io/metoro/metoro-demo-applications:load-generator-1.0.1`
+- `quay.io/metoro/metoro-demo-applications:instabook-cache-1.0.1`
+- `quay.io/metoro/metoro-demo-applications:instabook-1.0.1`
+- `quay.io/metoro/metoro-demo-applications:load-generator-instabook-1.0.1`
 
 And their corresponding `-latest` versions.
 
