@@ -132,4 +132,62 @@ loadGenerator:
       memory: 128Mi
     limits:
       cpu: 200m
-      memory: 256Mi 
+      memory: 256Mi
+
+# Instabook cache service configuration
+instabookCache:
+  name: instabook-cache
+  image:
+    repository: quay.io/metoro/metoro-demo-applications
+    tag: instabook-cache-latest
+  replicas: 1
+  apiToken: instabook-secret-token-2024
+  service:
+    type: ClusterIP
+    port: 8086
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Instabook service configuration
+instabook:
+  name: instabook
+  image:
+    repository: quay.io/metoro/metoro-demo-applications
+    tag: instabook-latest
+  replicas: 1
+  apiToken: instabook-secret-token-2024
+  service:
+    type: ClusterIP
+    port: 8087
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Load generator instabook configuration
+loadGeneratorInstabook:
+  name: load-generator-instabook
+  image:
+    repository: quay.io/metoro/metoro-demo-applications
+    tag: load-generator-instabook-latest
+  enabled: true
+  delayBetweenRequests: 3.0
+  metricsPort: 8098
+  service:
+    type: ClusterIP
+    port: 8098
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi

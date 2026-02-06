@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.instabook.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "microservice-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ .Values.instabook.name }}
+  annotations:
+    metoro.source.repository.base64: Z2l0aHViLmNvbS9tZXRvcm8taW8vbWV0b3JvLWRlYnVnZ2luZy1zY2VuYXJpbwo=
+spec:
+  replicas: {{ .Values.instabook.replicas }}
+  selector:
+    matchLabels:
+      {{- include "microservice-demo.selectorLabels" .Values.instabook | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "microservice-demo.selectorLabels" .Values.instabook | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Values.instabook.name }}
+          image: "{{ .Values.instabook.image.repository }}:{{ .Values.instabook.image.tag }}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: {{ .Values.instabook.service.port }}
+          env:
+            - name: PORT
+              value: "{{ .Values.instabook.service.port }}"
+            - name: INSTABOOK_CACHE_SERVICE
+              value: "http://{{ .Values.instabookCache.name }}:{{ .Values.instabookCache.service.port }}"
+            - name: INSTABOOK_API_TOKEN
+              value: "{{ .Values.instabook.apiToken }}"
+          resources:
+            {{- toYaml .Values.instabook.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.instabook.service.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.instabook.service.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.instabook.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "microservice-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ .Values.instabook.name }}
+spec:
+  type: {{ .Values.instabook.service.type }}
+  ports:
+    - port: {{ .Values.instabook.service.port }}
+      targetPort: {{ .Values.instabook.service.port }}
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ .Values.instabook.name }}
+    app.kubernetes.io/part-of: microservice-demo

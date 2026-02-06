@@ -57,4 +57,34 @@ services:
     ports:
       - "8099:8099"
     depends_on:
-      - gateway 
+      - gateway
+
+  instabook-cache:
+    build: ./instabook-cache
+    ports:
+      - "8086:8086"
+    environment:
+      - PORT=8086
+      - INSTABOOK_API_TOKEN=instabook-secret-token-2024
+
+  instabook:
+    build: ./instabook
+    ports:
+      - "8087:8087"
+    environment:
+      - PORT=8087
+      - INSTABOOK_CACHE_SERVICE=http://instabook-cache:8086
+      - INSTABOOK_API_TOKEN=instabook-secret-token-2024
+    depends_on:
+      - instabook-cache
+
+  load-generator-instabook:
+    build: ./load-generator-instabook
+    environment:
+      - INSTABOOK_SERVICE=http://instabook:8087
+      - DELAY_BETWEEN_REQUESTS=3.0
+      - METRICS_PORT=8098
+    ports:
+      - "8098:8098"
+    depends_on:
+      - instabook

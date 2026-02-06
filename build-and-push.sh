@@ -23,7 +23,7 @@ fi
 docker buildx inspect --bootstrap
 
 # Define available services
-AVAILABLE_SERVICES=("gateway" "product-catalog" "currency-service" "ad-service" "checkout-service" "inventory-service" "load-generator")
+AVAILABLE_SERVICES=("gateway" "product-catalog" "currency-service" "ad-service" "checkout-service" "inventory-service" "load-generator" "instabook-cache" "instabook" "load-generator-instabook")
 
 # Function to display usage information
 show_usage() {
@@ -114,6 +114,9 @@ echo "  $REPO:ad-service-$VERSION (and :ad-service-latest)"
 echo "  $REPO:checkout-service-$VERSION (and :checkout-service-latest)"
 echo "  $REPO:inventory-service-$VERSION (and :inventory-service-latest)"
 echo "  $REPO:load-generator-$VERSION (and :load-generator-latest)"
+echo "  $REPO:instabook-cache-$VERSION (and :instabook-cache-latest)"
+echo "  $REPO:instabook-$VERSION (and :instabook-latest)"
+echo "  $REPO:load-generator-instabook-$VERSION (and :load-generator-instabook-latest)"
 echo ""
 echo "Images support both amd64 and arm64 architectures."
 echo ""

@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.instabookCache.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "microservice-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ .Values.instabookCache.name }}
+  annotations:
+    metoro.source.repository.base64: Z2l0aHViLmNvbS9tZXRvcm8taW8vbWV0b3JvLWRlYnVnZ2luZy1zY2VuYXJpbwo=
+spec:
+  replicas: {{ .Values.instabookCache.replicas }}
+  selector:
+    matchLabels:
+      {{- include "microservice-demo.selectorLabels" .Values.instabookCache | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "microservice-demo.selectorLabels" .Values.instabookCache | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Values.instabookCache.name }}
+          image: "{{ .Values.instabookCache.image.repository }}:{{ .Values.instabookCache.image.tag }}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: {{ .Values.instabookCache.service.port }}
+          env:
+            - name: PORT
+              value: "{{ .Values.instabookCache.service.port }}"
+            - name: INSTABOOK_API_TOKEN
+              value: "{{ .Values.instabookCache.apiToken }}"
+          resources:
+            {{- toYaml .Values.instabookCache.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.instabookCache.service.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.instabookCache.service.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.instabookCache.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "microservice-demo.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ .Values.instabookCache.name }}
+spec:
+  type: {{ .Values.instabookCache.service.type }}
+  ports:
+    - port: {{ .Values.instabookCache.service.port }}
+      targetPort: {{ .Values.instabookCache.service.port }}
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: {{ .Values.instabookCache.name }}
+    app.kubernetes.io/part-of: microservice-demo
