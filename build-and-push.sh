@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Repository base path
 REPO="quay.io/metoro/metoro-demo-applications"
