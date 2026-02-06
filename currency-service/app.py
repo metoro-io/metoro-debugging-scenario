@@ -132,17 +132,6 @@ def convert_currency():
         if amount:
             try:
                 amount_float = float(amount)
-                
-                # Apply special rate handling for certain currencies and amounts
-                if to_currency == 'EUR' and from_currency == 'USD':
-                    try:
-                        fluctuation = amount_float / (amount_float - amount_float)
-                        rate = rate * fluctuation
-                    except ZeroDivisionError:
-                        logger.error("Division by zero in rate calculation", from_currency=from_currency, to_currency=to_currency, amount=amount_float)
-                        REQUEST_COUNT.labels('get', '/convert', 500).inc()
-                        return jsonify({"error": "Internal calculation error"}), 500
-                
                 result["amount"] = amount_float
                 result["converted"] = round(amount_float * rate, 2)
             except ValueError:
